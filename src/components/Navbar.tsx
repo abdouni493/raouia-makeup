@@ -107,8 +107,10 @@ const Navbar: React.FC<NavbarProps> = ({ user, config, isSidebarCollapsed, setIs
         
         <div className="flex items-center gap-3 pl-4 md:pl-6 border-l border-border">
           <div className="text-right hidden sm:block">
-            <p className="text-sm font-bold text-ink leading-none tracking-tight">{user.username}</p>
-            <p className="text-[10px] uppercase tracking-wider text-accent mt-1.5 font-bold opacity-60">{user.role === 'admin' ? 'Administrateur' : 'Employé'}</p>
+            <p className="text-sm font-bold text-ink leading-none tracking-tight">{user.username || user.fullName}</p>
+            <p className="text-[10px] uppercase tracking-wider text-accent mt-1.5 font-bold opacity-60">
+              {user.role === 'admin' || user.role === 'super_admin' ? 'Administrateur' : user.role === 'worker' ? 'Employé' : 'Utilisateur'}
+            </p>
           </div>
           <div className="w-11 h-11 rounded-full border-2 border-accent/20 p-0.5 shadow-sm hover:border-accent/40 transition-colors cursor-pointer overflow-hidden bg-white">
             {user.avatar ? (
