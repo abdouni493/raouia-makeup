@@ -74,6 +74,7 @@ const Reservations: React.FC<ReservationsProps> = ({ user: currentUser, config }
   const [isLoading, setIsLoading] = useState(true);
   const [filteredPrestationId, setFilteredPrestationId] = useState<string | 'all'>('all');
   const [debtFilter, setDebtFilter] = useState<'all' | 'debt'>('all');
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Data state
   const [prestations, setPrestations] = useState<Prestation[]>([]);
@@ -470,6 +471,26 @@ const Reservations: React.FC<ReservationsProps> = ({ user: currentUser, config }
               className="space-y-8"
             >
             <div className="space-y-3">
+              <div className="flex gap-3 items-center">
+                <div className="flex-1 relative">
+                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-ink/30" size={20} />
+                  <input
+                    type="text"
+                    placeholder="Rechercher par nom ou téléphone..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full pl-12 pr-4 py-3 rounded-2xl bg-white/40 border border-border text-ink placeholder:text-ink/40 font-medium focus:outline-none focus:border-accent/40 focus:bg-white transition-all duration-300"
+                  />
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery('')}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 text-ink/40 hover:text-ink transition-colors"
+                    >
+                      <X size={20} />
+                    </button>
+                  )}
+                </div>
+              </div>
               <div className="flex gap-3 overflow-x-auto pb-4 custom-scrollbar">
                 <button 
                   onClick={() => setFilteredPrestationId('all')}
@@ -529,6 +550,14 @@ const Reservations: React.FC<ReservationsProps> = ({ user: currentUser, config }
                 .reverse()
                 .filter(res => filteredPrestationId === 'all' ? true : res.prestationId === filteredPrestationId)
                 .filter(res => debtFilter === 'debt' ? (res.totalPrice - res.paidAmount > 0) : true)
+                .filter(res => {
+                  const searchLower = searchQuery.toLowerCase().trim();
+                  if (!searchLower) return true;
+                  return (
+                    res.clientName.toLowerCase().includes(searchLower) ||
+                    res.clientPhone.includes(searchQuery)
+                  );
+                })
                 .map((res, idx) => (
                 <motion.div 
                   key={res.id} 
