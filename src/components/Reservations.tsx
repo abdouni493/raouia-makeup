@@ -817,7 +817,7 @@ const Reservations: React.FC<ReservationsProps> = ({ user: currentUser, config }
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.3, type: 'spring' }}
-              className="grid grid-cols-7 gap-1 bg-gradient-to-b from-border/50 to-border/30 border-2 border-border/50 rounded-3xl overflow-hidden shadow-xl backdrop-blur-sm"
+              className="grid grid-cols-7 gap-0.5 sm:gap-0.5 md:gap-1 bg-gradient-to-b from-border/50 to-border/30 border-2 border-border/50 rounded-3xl overflow-hidden shadow-xl backdrop-blur-sm"
             >
               {/* Day Headers */}
               {['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'].map((d, idx) => (
@@ -826,7 +826,7 @@ const Reservations: React.FC<ReservationsProps> = ({ user: currentUser, config }
                   initial={{ opacity: 0, y: -10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.35 + idx * 0.05 }}
-                  className="bg-gradient-to-br from-accent/20 via-primary-bg/60 to-accent/10 text-center text-[11px] font-bold text-accent uppercase py-5 tracking-[0.15em] border-b border-border/30"
+                  className="bg-gradient-to-br from-accent/20 via-primary-bg/60 to-accent/10 text-center text-[8px] sm:text-[9px] md:text-[11px] font-bold text-accent uppercase py-2 sm:py-3 md:py-5 tracking-[0.1em] md:tracking-[0.15em] border-b border-border/30"
                 >
                   {d}
                 </motion.div>
@@ -856,7 +856,7 @@ const Reservations: React.FC<ReservationsProps> = ({ user: currentUser, config }
                       }
                     }}
                     className={cn(
-                      "min-h-[160px] p-4 transition-all duration-300 relative group cursor-pointer border-2 overflow-hidden",
+                      "min-h-[80px] sm:min-h-[120px] md:min-h-[160px] p-2 sm:p-3 md:p-4 transition-all duration-300 relative group cursor-pointer border-2 overflow-hidden",
                       isCurrentMonth ? "cursor-pointer" : "cursor-default",
                       isToday 
                         ? "bg-gradient-to-br from-accent/15 via-accent/10 to-accent/5 border-accent shadow-lg shadow-accent/30" 
@@ -881,9 +881,9 @@ const Reservations: React.FC<ReservationsProps> = ({ user: currentUser, config }
                         animate={{ scale: 1 }}
                         transition={{ delay: 0.4 + (i % 7) * 0.03, type: 'spring', stiffness: 200 }}
                         className={cn(
-                          "text-sm font-bold w-10 h-10 flex items-center justify-center rounded-full transition-all duration-300 shadow-sm",
+                          "text-xs sm:text-sm md:text-sm font-bold w-6 h-6 sm:w-8 sm:h-8 md:w-10 md:h-10 flex items-center justify-center rounded-full transition-all duration-300 shadow-sm",
                           isToday 
-                            ? "bg-gradient-to-br from-accent to-accent/80 text-white shadow-lg shadow-accent/40 font-serif text-lg" 
+                            ? "bg-gradient-to-br from-accent to-accent/80 text-white shadow-lg shadow-accent/40 font-serif text-xs sm:text-sm md:text-lg" 
                             : "text-ink/70 group-hover:text-accent group-hover:bg-accent/10 font-semibold"
                         )}
                       >
@@ -894,7 +894,7 @@ const Reservations: React.FC<ReservationsProps> = ({ user: currentUser, config }
                           initial={{ scale: 0, rotate: -180 }}
                           animate={{ scale: 1, rotate: 0 }}
                           transition={{ type: 'spring', stiffness: 200, damping: 12 }}
-                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-gradient-to-r from-accent/90 to-accent text-white text-[10px] font-bold uppercase tracking-widest shadow-md"
+                          className="flex items-center gap-0.5 sm:gap-1 px-1.5 sm:px-2 md:px-2.5 py-1 sm:py-1.5 rounded-full bg-gradient-to-r from-accent/90 to-accent text-white text-[7px] sm:text-[8px] md:text-[10px] font-bold uppercase tracking-widest shadow-md"
                         >
                           <span className="w-1.5 h-1.5 rounded-full bg-white/80" />
                           {dayRes.length} RDV
@@ -3450,7 +3450,7 @@ const Reservations: React.FC<ReservationsProps> = ({ user: currentUser, config }
                       initial={{ opacity: 0, y: -30 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: 0.1, type: 'spring' }}
-                      className="sticky top-0 z-20 bg-gradient-to-r from-accent/15 via-accent/10 to-transparent border-b-2 border-accent/20 px-12 py-10 backdrop-blur-lg"
+                      className="sticky top-0 z-20 bg-gradient-to-r from-accent/15 via-accent/10 to-transparent border-b-2 border-accent/20 px-4 sm:px-6 md:px-12 py-4 sm:py-6 md:py-10 backdrop-blur-lg"
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex-1">
@@ -3458,13 +3458,13 @@ const Reservations: React.FC<ReservationsProps> = ({ user: currentUser, config }
                             initial={{ opacity: 0, x: -30 }}
                             animate={{ opacity: 1, x: 0 }}
                             transition={{ delay: 0.15, type: 'spring' }}
-                            className="space-y-3"
+                            className="space-y-2 sm:space-y-3"
                           >
-                            <h3 className="text-5xl font-serif font-bold bg-gradient-to-r from-ink via-accent to-ink bg-clip-text text-transparent">
+                            <h3 className="text-2xl sm:text-3xl md:text-5xl font-serif font-bold bg-gradient-to-r from-ink via-accent to-ink bg-clip-text text-transparent">
                               {format(selectedCalendarDay, 'd MMMM', { locale: fr })}
                             </h3>
-                            <p className="text-accent font-bold text-sm uppercase tracking-[0.15em] flex items-center gap-2">
-                              <span className="w-2 h-2 rounded-full bg-accent" />
+                            <p className="text-accent font-bold text-xs sm:text-sm uppercase tracking-[0.1em] md:tracking-[0.15em] flex items-center gap-2">
+                              <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-accent" />
                               {format(selectedCalendarDay, 'EEEE', { locale: fr })}
                             </p>
                           </motion.div>
@@ -3473,15 +3473,15 @@ const Reservations: React.FC<ReservationsProps> = ({ user: currentUser, config }
                           whileHover={{ scale: 1.1, rotate: 90 }}
                           whileTap={{ scale: 0.95 }}
                           onClick={() => setModal(null)}
-                          className="p-4 rounded-full hover:bg-gradient-to-br hover:from-accent/20 hover:to-accent/10 text-accent transition-all duration-300 shadow-lg"
+                          className="p-2 sm:p-3 md:p-4 rounded-full hover:bg-gradient-to-br hover:from-accent/20 hover:to-accent/10 text-accent transition-all duration-300 shadow-lg"
                         >
-                          <X size={32} strokeWidth={2.5} />
+                          <X size={24} sm:size={28} md:size={32} strokeWidth={2.5} />
                         </motion.button>
                       </div>
                     </motion.div>
 
                     {/* Main Content */}
-                    <div className="p-12 space-y-8 relative z-10">
+                    <div className="p-4 sm:p-6 md:p-12 space-y-4 sm:space-y-6 md:space-y-8 relative z-10">
                       {(() => {
                         const dayReservations = reservations
                           .filter(r => isSameDay(new Date(r.date), selectedCalendarDay))
