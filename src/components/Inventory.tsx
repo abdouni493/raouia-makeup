@@ -64,63 +64,87 @@ const Inventory: React.FC<InventoryProps> = ({ initialTab = 'suppliers' }) => {
   const [newPurchase, setNewPurchase] = useState({ supplierId: '', description: '', cost: 0, paidAmount: 0 });
 
   const fetchData = async () => {
-    setIsLoading(true);
-    
-    // Fetch Suppliers
-    const { data: sData, error: sError } = await supabase.from('suppliers').select('*');
-    if (sError) console.error('Error fetching suppliers:', sError);
-    else setSuppliers(sData.map(s => ({ id: s.id, fullName: s.full_name, phone: s.phone, address: s.address })));
+    try {
+      setIsLoading(true);
+      
+      console.log('[FETCH] Starting data fetch...');
+      
+      // Fetch Suppliers
+      console.log('[FETCH] Fetching suppliers...');
+      const { data: sData, error: sError } = await supabase.from('suppliers').select('*');
+      if (sError) {
+        console.error('[FETCH ERROR] Error fetching suppliers:', sError);
+      } else {
+        console.log('[FETCH SUCCESS] Suppliers fetched:', sData?.length || 0);
+        setSuppliers(sData.map(s => ({ id: s.id, fullName: s.full_name, phone: s.phone, address: s.address })));
+      }
 
-    // Fetch Purchases
-    const { data: pData, error: pError } = await supabase.from('purchases').select('*').order('date', { ascending: false });
-    if (pError) console.error('Error fetching purchases:', pError);
-    else setPurchases(pData.map(p => ({ id: p.id, supplierId: p.supplier_id, description: p.description, cost: p.cost, paidAmount: p.paid_amount, date: p.date })));
+      // Fetch Purchases
+      console.log('[FETCH] Fetching purchases...');
+      const { data: pData, error: pError } = await supabase.from('purchases').select('*').order('date', { ascending: false });
+      if (pError) {
+        console.error('[FETCH ERROR] Error fetching purchases:', pError);
+      } else {
+        console.log('[FETCH SUCCESS] Purchases fetched:', pData?.length || 0);
+        setPurchases(pData.map(p => ({ id: p.id, supplierId: p.supplier_id, description: p.description, cost: p.cost, paidAmount: p.paid_amount, date: p.date })));
+      }
 
-    // Fetch Invoices (Reservations) with all details
-    const { data: iData, error: iError } = await supabase.from('reservations').select('*').order('date', { ascending: false });
-    if (iError) console.error('Error fetching invoices:', iError);
-    else {
-      const invoicesWithDetails = await Promise.all((iData || []).map(async (i) => {
-        // Fetch prestation details
-        const { data: prestationData } = await supabase.from('prestations').select('*').eq('id', i.prestation_id).single();
-        
-        // Fetch worker details
-        let workerData = null;
-        if (i.worker_id) {
-          const { data: wData } = await supabase.from('profiles').select('*').eq('id', i.worker_id).single();
-          workerData = wData;
-        }
-        
-        // Fetch service details
-        let servicesData = [];
-        if (i.service_ids && i.service_ids.length > 0) {
-          const { data: sData } = await supabase.from('services').select('*').in('id', i.service_ids);
-          servicesData = sData || [];
-        }
-        
-        return {
-          id: i.id,
-          client: i.client_name,
-          phone: i.client_phone,
-          date: i.date,
-          time: i.time,
-          amount: i.total_price,
-          paidAmount: i.paid_amount,
-          status: i.status,
-          prestationId: i.prestation_id,
-          prestationName: prestationData?.name,
-          serviceIds: i.service_ids,
-          services: servicesData,
-          workerId: i.worker_id,
-          workerName: workerData?.full_name,
-          createdAt: i.created_at,
-          finalizedAt: i.finalized_at
-        };
-      }));
-      setInvoices(invoicesWithDetails);
+      // Fetch Invoices (Reservations) with all details
+      console.log('[FETCH] Fetching invoices...');
+      const { data: iData, error: iError } = await supabase.from('reservations').select('*').order('date', { ascending: false });
+      if (iError) {
+        console.error('[FETCH ERROR] Error fetching invoices:', iError);
+        setInvoices([]);
+      } else {
+        console.log('[FETCH] Processing', iData?.length || 0, 'invoices with details...');
+        const invoicesWithDetails = await Promise.all((iData || []).map(async (i) => {
+          // Fetch prestation details
+          const { data: prestationData } = await supabase.from('prestations').select('*').eq('id', i.prestation_id).single();
+          
+          // Fetch worker details
+          let workerData = null;
+          if (i.worker_id) {
+            const { data: wData } = await supabase.from('profiles').select('*').eq('id', i.worker_id).single();
+            workerData = wData;
+          }
+          
+          // Fetch service details
+          let servicesData = [];
+          if (i.service_ids && i.service_ids.length > 0) {
+            const { data: sData } = await supabase.from('services').select('*').in('id', i.service_ids);
+            servicesData = sData || [];
+          }
+          
+          return {
+            id: i.id,
+            client: i.client_name,
+            phone: i.client_phone,
+            date: i.date,
+            time: i.time,
+            amount: i.total_price,
+            paidAmount: i.paid_amount,
+            status: i.status,
+            prestationId: i.prestation_id,
+            prestationName: prestationData?.name,
+            serviceIds: i.service_ids,
+            services: servicesData,
+            workerId: i.worker_id,
+            workerName: workerData?.full_name,
+            createdAt: i.created_at,
+            finalizedAt: i.finalized_at
+          };
+        }));
+        console.log('[FETCH SUCCESS] Invoices with details processed:', invoicesWithDetails.length);
+        setInvoices(invoicesWithDetails);
+      }
+
+      console.log('[FETCH] All data fetched successfully');
+    } catch (error) {
+      console.error('[FETCH CRITICAL ERROR]:', error);
+    } finally {
+      setIsLoading(false);
+      console.log('[FETCH] Loading state set to false');
     }
-
-    setIsLoading(false);
   };
 
   useEffect(() => {
@@ -242,19 +266,78 @@ const Inventory: React.FC<InventoryProps> = ({ initialTab = 'suppliers' }) => {
   };
 
   const handleDelete = async () => {
-    if (!deleteConfirm) return;
-    if (deleteConfirm.type === 'supplier') {
-      const { error } = await supabase.from('suppliers').delete().eq('id', deleteConfirm.id);
-      if (error) console.error('Error deleting supplier:', error);
-    } else if (deleteConfirm.type === 'purchase') {
-      const { error } = await supabase.from('purchases').delete().eq('id', deleteConfirm.id);
-      if (error) console.error('Error deleting purchase:', error);
-    } else if (deleteConfirm.type === 'invoice') {
-      const { error } = await supabase.from('appointments').delete().eq('id', deleteConfirm.id);
-      if (error) console.error('Error deleting invoice:', error);
+    if (!deleteConfirm) {
+      console.warn('[DELETE] No item selected for deletion');
+      return;
     }
-    fetchData();
-    setDeleteConfirm(null);
+
+    try {
+      const itemType = deleteConfirm.type;
+      const itemId = deleteConfirm.id;
+      
+      console.log(`[DELETE] Starting ${itemType} deletion:`, itemId);
+      
+      let table = '';
+      if (itemType === 'supplier') {
+        table = 'suppliers';
+      } else if (itemType === 'purchase') {
+        table = 'purchases';
+      } else if (itemType === 'invoice') {
+        table = 'reservations';
+      }
+
+      if (!table) {
+        console.error('[DELETE ERROR] Unknown delete type:', itemType);
+        throw new Error('Type de suppression inconnu');
+      }
+
+      console.log(`[DELETE] Deleting from table: ${table} with id: ${itemId}`);
+      
+      // Delete the item and get the response
+      const { data, error } = await supabase
+        .from(table)
+        .delete()
+        .eq('id', itemId)
+        .select();
+
+      console.log(`[DELETE] Delete response:`, { data, error, rowCount: data?.length });
+
+      if (error) {
+        console.error(`[DELETE ERROR] Failed to delete ${itemType}:`, error);
+        throw error;
+      }
+
+      // Check if deletion was actually successful
+      if (!data || data.length === 0) {
+        console.warn('[DELETE WARNING] Delete returned no rows - RLS policies may be blocking deletion');
+        throw new Error('La suppression a échoué - vérifiez vos permissions');
+      }
+
+      console.log(`[DELETE SUCCESS] ${itemType} deleted successfully from ${table}`);
+      
+      // Update local state immediately
+      if (itemType === 'supplier') {
+        setSuppliers(prev => prev.filter(s => s.id !== itemId));
+      } else if (itemType === 'purchase') {
+        setPurchases(prev => prev.filter(p => p.id !== itemId));
+      } else if (itemType === 'invoice') {
+        setInvoices(prev => prev.filter(i => i.id !== itemId));
+      }
+      
+      // Close the modal
+      setDeleteConfirm(null);
+      
+      console.log(`[DELETE] ${itemType} removed from UI successfully`);
+    } catch (error) {
+      console.error(`[DELETE CRITICAL ERROR] ${deleteConfirm?.type}:`, error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('[DELETE ERROR MESSAGE]:', errorMessage);
+      alert(`Erreur lors de la suppression: ${errorMessage}`);
+      setDeleteConfirm(null);
+      // Refetch data to ensure UI is in sync with database
+      console.log('[DELETE] Refetching data after error...');
+      await fetchData();
+    }
   };
 
   const openEditSupplier = (s: Supplier) => {

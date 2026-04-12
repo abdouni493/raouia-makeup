@@ -59,7 +59,7 @@ interface ReservationsProps {
 
 const Reservations: React.FC<ReservationsProps> = ({ user: currentUser, config }) => {
   const [view, setView] = useState<'list' | 'create' | 'calendar'>('list');
-  const [modal, setModal] = useState<'details' | 'finalise' | 'payDebt' | 'changeDate' | 'delete' | 'print' | 'personalise' | null>(null);
+  const [modal, setModal] = useState<'details' | 'finalise' | 'payDebt' | 'changeDate' | 'delete' | 'print' | 'personalise' | 'dayView' | null>(null);
   const [step, setStep] = useState(1);
   const [selectedPrestation, setSelectedPrestation] = useState<Prestation | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
@@ -75,6 +75,7 @@ const Reservations: React.FC<ReservationsProps> = ({ user: currentUser, config }
   const [filteredPrestationId, setFilteredPrestationId] = useState<string | 'all'>('all');
   const [debtFilter, setDebtFilter] = useState<'all' | 'debt'>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCalendarDay, setSelectedCalendarDay] = useState<Date | null>(null);
 
   // Data state
   const [prestations, setPrestations] = useState<Prestation[]>([]);
@@ -694,129 +695,271 @@ const Reservations: React.FC<ReservationsProps> = ({ user: currentUser, config }
             initial={{ opacity: 0, scale: 0.98 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.98 }}
-            transition={{ duration: 0.5 }}
-            className="card-premium p-8"
+            transition={{ duration: 0.5, type: 'spring', stiffness: 100, damping: 15 }}
+            className="card-premium p-8 bg-gradient-to-br from-white via-primary-bg/30 to-white"
           >
-            <div className="flex items-center justify-between mb-10">
-              <div className="flex items-center gap-4">
-                <button 
+            {/* Header with Enhanced Navigation */}
+            <motion.div 
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.1 }}
+              className="flex items-center justify-between mb-12"
+            >
+              <div className="flex items-center gap-6">
+                <motion.button 
                   onClick={prevMonth}
-                  className="p-2 rounded-xl hover:bg-accent/10 text-accent transition-colors"
+                  whileHover={{ scale: 1.1, rotate: -5 }}
+                  whileTap={{ scale: 0.95 }}
+                  className="p-3 rounded-full hover:bg-gradient-to-br hover:from-accent/20 hover:to-accent/10 text-accent transition-all duration-300 shadow-sm hover:shadow-lg hover:shadow-accent/20"
                 >
-                  <ChevronLeft size={24} />
-                </button>
-                <h3 className="text-2xl font-serif font-bold text-ink capitalize">{format(currentMonth, 'MMMM yyyy', { locale: fr })}</h3>
-                <button 
+                  <ChevronLeft size={26} strokeWidth={2.5} />
+                </motion.button>
+                <div className="text-center min-w-[280px]">
+                  <motion.h3 
+                    key={format(currentMonth, 'MMMM yyyy')}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.3 }}
+                    className="text-3xl font-serif font-bold text-ink capitalize bg-gradient-to-r from-ink via-accent to-ink bg-clip-text text-transparent"
+                  >
+                    {format(currentMonth, 'MMMM yyyy', { locale: fr })}
+                  </motion.h3>
+                  <p className="text-xs font-bold text-accent/60 uppercase tracking-widest mt-1">
+                    {format(new Date(), 'MMMM yyyy', { locale: fr }) === format(currentMonth, 'MMMM yyyy', { locale: fr }) ? 'Mois courant' : 'Autre mois'}
+                  </p>
+                </div>
+                <motion.button 
                   onClick={nextMonth}
-                  className="p-2 rounded-xl hover:bg-accent/10 text-accent transition-colors"
+                  whileHover={{ scale: 1.1, rotate: 5 }}
+                  whileTap={{ scale: 0.95 }}
+                  className="p-3 rounded-full hover:bg-gradient-to-br hover:from-accent/20 hover:to-accent/10 text-accent transition-all duration-300 shadow-sm hover:shadow-lg hover:shadow-accent/20"
                 >
-                  <ChevronRight size={24} />
-                </button>
+                  <ChevronRight size={26} strokeWidth={2.5} />
+                </motion.button>
               </div>
-              <div className="flex gap-2">
-                <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-600 text-[10px] font-bold uppercase tracking-wider border border-emerald-100">
-                  <div className="w-2 h-2 rounded-full bg-emerald-500" />
-                  Finalisé
-                </div>
-                <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-50 text-amber-600 text-[10px] font-bold uppercase tracking-wider border border-amber-100">
-                  <div className="w-2 h-2 rounded-full bg-amber-500" />
-                  En attente
-                </div>
-              </div>
-            </div>
+              
+              {/* Legend with Enhanced Styling */}
+              <motion.div 
+                initial={{ opacity: 0, x: 30 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.15 }}
+                className="flex gap-3"
+              >
+                <motion.div 
+                  whileHover={{ scale: 1.05, y: -2 }}
+                  className="flex items-center gap-2.5 px-4 py-2.5 rounded-full bg-gradient-to-br from-emerald-50 to-emerald-100/50 text-emerald-700 text-[11px] font-bold uppercase tracking-wider border border-emerald-200/50 shadow-sm hover:shadow-md transition-all"
+                >
+                  <motion.div 
+                    animate={{ scale: [1, 1.2, 1] }}
+                    transition={{ duration: 2, repeat: Infinity }}
+                    className="w-2.5 h-2.5 rounded-full bg-emerald-500"
+                  />
+                  <span>Finalisé</span>
+                </motion.div>
+                <motion.div 
+                  whileHover={{ scale: 1.05, y: -2 }}
+                  className="flex items-center gap-2.5 px-4 py-2.5 rounded-full bg-gradient-to-br from-amber-50 to-amber-100/50 text-amber-700 text-[11px] font-bold uppercase tracking-wider border border-amber-200/50 shadow-sm hover:shadow-md transition-all"
+                >
+                  <motion.div 
+                    animate={{ scale: [1, 1.2, 1] }}
+                    transition={{ duration: 2, repeat: Infinity, delay: 0.3 }}
+                    className="w-2.5 h-2.5 rounded-full bg-amber-500"
+                  />
+                  <span>En attente</span>
+                </motion.div>
+              </motion.div>
+            </motion.div>
 
-            <div className="flex gap-3 overflow-x-auto pb-4 custom-scrollbar mb-8">
-              <button 
+            {/* Filter Buttons with Enhanced Animations */}
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 }}
+              className="flex gap-3 overflow-x-auto pb-6 custom-scrollbar mb-10 bg-gradient-to-r from-white via-white to-transparent px-1"
+            >
+              <motion.button 
+                whileHover={{ scale: 1.05, y: -2 }}
+                whileTap={{ scale: 0.95 }}
                 onClick={() => setFilteredPrestationId('all')}
                 className={cn(
-                  "px-6 py-2.5 rounded-2xl text-xs font-bold uppercase tracking-widest whitespace-nowrap shadow-sm transition-all duration-300",
+                  "px-6 py-3 rounded-full text-xs font-bold uppercase tracking-widest whitespace-nowrap shadow-sm transition-all duration-300 border-2",
                   filteredPrestationId === 'all' 
-                    ? "bg-accent text-white border border-accent" 
-                    : "bg-white/40 border border-border text-ink/40 hover:text-accent hover:border-accent/40 hover:bg-white"
+                    ? "bg-gradient-to-br from-accent to-accent/90 text-white border-accent shadow-lg shadow-accent/30" 
+                    : "bg-white/60 border-accent/20 text-ink/60 hover:text-accent hover:border-accent/40 hover:bg-white hover:shadow-md"
                 )}
               >
                 Toutes Prestations
-              </button>
-              {prestations.map((prestation) => (
-                <button 
+              </motion.button>
+              {prestations.map((prestation, idx) => (
+                <motion.button 
                   key={prestation.id}
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.25 + idx * 0.05 }}
+                  whileHover={{ scale: 1.05, y: -2 }}
+                  whileTap={{ scale: 0.95 }}
                   onClick={() => setFilteredPrestationId(prestation.id)}
                   className={cn(
-                    "px-6 py-2.5 rounded-2xl text-xs font-bold uppercase tracking-widest whitespace-nowrap shadow-sm transition-all duration-300",
+                    "px-6 py-3 rounded-full text-xs font-bold uppercase tracking-widest whitespace-nowrap shadow-sm transition-all duration-300 border-2",
                     filteredPrestationId === prestation.id 
-                      ? "bg-accent text-white border border-accent" 
-                      : "bg-white/40 border border-border text-ink/40 hover:text-accent hover:border-accent/40 hover:bg-white"
+                      ? "bg-gradient-to-br from-accent to-accent/90 text-white border-accent shadow-lg shadow-accent/30" 
+                      : "bg-white/60 border-accent/20 text-ink/60 hover:text-accent hover:border-accent/40 hover:bg-white hover:shadow-md"
                   )}
                 >
                   {prestation.name}
-                </button>
+                </motion.button>
               ))}
-            </div>
+            </motion.div>
 
-            <div className="grid grid-cols-7 gap-px bg-border border border-border rounded-3xl overflow-hidden shadow-sm">
-              {['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'].map(d => (
-                <div key={d} className="bg-primary-bg/50 text-center text-[10px] font-bold text-ink/40 uppercase py-4 tracking-[0.2em]">{d}</div>
+            {/* Calendar Grid with Enhanced Styling */}
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3, type: 'spring' }}
+              className="grid grid-cols-7 gap-1 bg-gradient-to-b from-border/50 to-border/30 border-2 border-border/50 rounded-3xl overflow-hidden shadow-xl backdrop-blur-sm"
+            >
+              {/* Day Headers */}
+              {['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'].map((d, idx) => (
+                <motion.div 
+                  key={d}
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.35 + idx * 0.05 }}
+                  className="bg-gradient-to-br from-accent/20 via-primary-bg/60 to-accent/10 text-center text-[11px] font-bold text-accent uppercase py-5 tracking-[0.15em] border-b border-border/30"
+                >
+                  {d}
+                </motion.div>
               ))}
+              
+              {/* Calendar Days */}
               {calendarDays.map((day, i) => {
                 const dayRes = reservations
                   .filter(r => filteredPrestationId === 'all' ? true : r.prestationId === filteredPrestationId)
                   .filter(r => isSameDay(new Date(r.date), day));
                 const isToday = isSameDay(day, new Date());
                 const isCurrentMonth = isSameMonth(day, currentMonth);
+                const hasReservations = dayRes.length > 0;
                 
                 return (
                   <motion.div 
-                    key={i} 
-                    whileHover={{ zIndex: 10 }}
+                    key={i}
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ delay: 0.4 + (i % 7) * 0.03 + Math.floor(i / 7) * 0.05 }}
+                    whileHover={isCurrentMonth ? { scale: 1.08, y: -4 } : {}}
+                    whileTap={{ scale: 0.98 }}
                     onClick={() => {
-                      if (dayRes.length > 0) {
-                        setSelectedReservation(dayRes[0]);
-                        setModal('details');
+                      if (isCurrentMonth) {
+                        setSelectedCalendarDay(day);
+                        setModal('dayView');
                       }
                     }}
                     className={cn(
-                      "min-h-[140px] p-4 bg-white transition-all duration-300 relative group cursor-pointer",
-                      !isToday && "hover:bg-accent/5",
-                      !isCurrentMonth && "opacity-30"
+                      "min-h-[160px] p-4 transition-all duration-300 relative group cursor-pointer border-2 overflow-hidden",
+                      isCurrentMonth ? "cursor-pointer" : "cursor-default",
+                      isToday 
+                        ? "bg-gradient-to-br from-accent/15 via-accent/10 to-accent/5 border-accent shadow-lg shadow-accent/30" 
+                        : !isCurrentMonth
+                        ? "bg-white/30 border-border/20 opacity-40"
+                        : hasReservations
+                        ? "bg-gradient-to-br from-white via-accent/5 to-white border-accent/40 hover:shadow-lg hover:shadow-accent/15"
+                        : "bg-white border-border/40 hover:shadow-lg hover:shadow-accent/10"
                     )}
                   >
-                    <div className="flex justify-between items-center mb-3">
-                      <span className={cn(
-                        "text-sm font-bold w-8 h-8 flex items-center justify-center rounded-xl transition-colors",
-                        isToday ? "bg-accent text-white shadow-lg shadow-accent/20" : "text-ink/60 group-hover:text-accent"
-                      )}>{format(day, 'd')}</span>
-                      {dayRes.length > 0 && (
-                        <span className="text-[10px] font-bold text-accent opacity-60">
+                    {/* Background Gradient Effect */}
+                    {isToday && (
+                      <motion.div 
+                        layoutId="today-bg"
+                        className="absolute inset-0 bg-gradient-to-br from-accent/20 via-transparent to-transparent opacity-50"
+                      />
+                    )}
+                    
+                    <div className="relative z-10 flex justify-between items-start mb-3">
+                      <motion.span 
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                        transition={{ delay: 0.4 + (i % 7) * 0.03, type: 'spring', stiffness: 200 }}
+                        className={cn(
+                          "text-sm font-bold w-10 h-10 flex items-center justify-center rounded-full transition-all duration-300 shadow-sm",
+                          isToday 
+                            ? "bg-gradient-to-br from-accent to-accent/80 text-white shadow-lg shadow-accent/40 font-serif text-lg" 
+                            : "text-ink/70 group-hover:text-accent group-hover:bg-accent/10 font-semibold"
+                        )}
+                      >
+                        {format(day, 'd')}
+                      </motion.span>
+                      {hasReservations && (
+                        <motion.div 
+                          initial={{ scale: 0, rotate: -180 }}
+                          animate={{ scale: 1, rotate: 0 }}
+                          transition={{ type: 'spring', stiffness: 200, damping: 12 }}
+                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-gradient-to-r from-accent/90 to-accent text-white text-[10px] font-bold uppercase tracking-widest shadow-md"
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full bg-white/80" />
                           {dayRes.length} RDV
-                        </span>
+                        </motion.div>
                       )}
                     </div>
-                    <div className="space-y-1.5">
+
+                    {/* Reservations Preview */}
+                    <div className="relative z-10 space-y-1.5">
                       {dayRes.slice(0, 3).map((r, idx) => (
                         <motion.div 
-                          key={idx} 
-                          initial={{ opacity: 0, x: -5 }}
+                          key={idx}
+                          initial={{ opacity: 0, x: -10 }}
                           animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: 0.5 + (i % 7) * 0.03 + idx * 0.08 }}
+                          whileHover={{ x: 2 }}
                           className={cn(
-                            "text-[9px] font-bold p-2 rounded-lg border truncate transition-all duration-300",
+                            "text-[9px] font-bold p-2 rounded-lg border-1.5 truncate transition-all duration-300 hover:shadow-md group/card backdrop-blur-sm",
                             r.status === 'finalized' 
-                              ? "bg-emerald-50 text-emerald-700 border-emerald-100" 
-                              : "bg-amber-50 text-amber-700 border-amber-100"
+                              ? "bg-gradient-to-r from-emerald-50 to-emerald-100/70 text-emerald-800 border-emerald-200/80 hover:from-emerald-100 hover:to-emerald-100" 
+                              : "bg-gradient-to-r from-amber-50 to-amber-100/70 text-amber-800 border-amber-200/80 hover:from-amber-100 hover:to-amber-100"
                           )}
                         >
-                          <span className="opacity-60">{r.time}</span> • {r.clientName}
+                          <span className="opacity-70 font-semibold">{r.time}</span>
+                          <span className="opacity-60 mx-1">•</span>
+                          <span className="font-semibold">{r.clientName}</span>
                         </motion.div>
                       ))}
                       {dayRes.length > 3 && (
-                        <div className="text-[9px] text-center text-accent font-bold mt-2 uppercase tracking-widest opacity-60">
-                          +{dayRes.length - 3} autres
-                        </div>
+                        <motion.div 
+                          initial={{ opacity: 0, scale: 0.8 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          transition={{ delay: 0.5 + (i % 7) * 0.03 + 0.24, type: 'spring' }}
+                          className="text-[9px] text-center text-accent font-bold mt-2.5 uppercase tracking-widest opacity-80 bg-gradient-to-r from-accent/10 to-accent/5 py-1.5 rounded-lg border border-accent/20"
+                        >
+                          +{dayRes.length - 3} autre{dayRes.length - 3 > 1 ? 's' : ''}
+                        </motion.div>
                       )}
                     </div>
                   </motion.div>
                 );
               })}
-            </div>
+            </motion.div>
+
+            {/* Footer Info */}
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.5 }}
+              className="mt-8 flex items-center justify-center gap-6 text-[12px] font-medium text-ink/50"
+            >
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-accent/40" />
+                <span>Cliquez sur un jour pour voir les détails</span>
+              </div>
+              <div className="w-px h-4 bg-border/30" />
+              <div className="flex items-center gap-2">
+                <motion.div 
+                  animate={{ scale: [1, 1.3, 1] }}
+                  transition={{ duration: 2, repeat: Infinity }}
+                  className="w-2 h-2 rounded-full bg-accent"
+                />
+                <span>Aujourd'hui</span>
+              </div>
+            </motion.div>
           </motion.div>
         )}
 
@@ -1457,135 +1600,295 @@ const Reservations: React.FC<ReservationsProps> = ({ user: currentUser, config }
               )}
             >
               {modal === 'details' && selectedReservation && (
-                <div className="p-10 space-y-8">
-                  <div className="flex justify-between items-start">
-                    <div className="flex items-center gap-5">
-                      <div className="w-16 h-16 rounded-3xl bg-accent/10 flex items-center justify-center text-accent">
-                        <User size={32} />
-                      </div>
-                      <div>
-                        <h3 className="text-3xl font-serif font-bold text-ink tracking-tight">{selectedReservation.clientName}</h3>
-                        <p className="text-accent font-bold tracking-widest uppercase text-xs mt-1">{selectedReservation.clientPhone}</p>
-                      </div>
-                    </div>
-                    <button onClick={() => setModal(null)} className="p-3 rounded-2xl hover:bg-primary-bg text-ink/20 hover:text-ink transition-all">
-                      <X size={24} />
-                    </button>
-                  </div>
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    onClick={() => setModal(null)}
+                    className="absolute inset-0 bg-gradient-to-br from-ink/60 via-ink/50 to-ink/60 backdrop-blur-xl"
+                  />
+                  
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.85, y: 60, rotateX: 20 }}
+                    animate={{ opacity: 1, scale: 1, y: 0, rotateX: 0 }}
+                    exit={{ opacity: 0, scale: 0.85, y: 60, rotateX: 20 }}
+                    transition={{ 
+                      type: 'spring', 
+                      damping: 12, 
+                      stiffness: 400,
+                      duration: 0.35
+                    }}
+                    style={{ perspective: 1000 }}
+                    className="relative bg-gradient-to-br from-white via-white to-primary-bg/30 rounded-[48px] shadow-2xl overflow-hidden w-full max-w-3xl max-h-[85vh] overflow-y-auto custom-scrollbar border border-white/50 will-change-transform"
+                  >
+                    {/* Animated Background Gradient */}
+                    <div className="absolute inset-0 bg-gradient-to-br from-accent/5 via-transparent to-primary-bg/20 pointer-events-none" />
 
-                  <div className="grid grid-cols-2 gap-6">
-                    <div className="p-6 rounded-3xl bg-primary-bg/50 border border-border space-y-4">
-                      <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-ink/30">Détails du RDV</h4>
-                      <div className="space-y-3">
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm text-ink/40 font-medium">Date</span>
-                          <span className="text-sm font-bold text-ink">{format(new Date(selectedReservation.date), 'dd MMMM yyyy', { locale: fr })}</span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm text-ink/40 font-medium">Heure</span>
-                          <span className="text-sm font-bold text-ink">{selectedReservation.time}</span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm text-ink/40 font-medium">Prestation</span>
-                          <span className="text-sm font-bold text-ink">{prestations.find(p => p.id === selectedReservation.prestationId)?.name}</span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm text-ink/40 font-medium">Créé par</span>
-                          <span className="text-sm font-bold text-ink">{employees.find(e => e.id === selectedReservation.createdBy)?.fullName || (selectedReservation.createdBy === currentUser.id ? currentUser.fullName : 'Inconnu')}</span>
-                        </div>
-                        {selectedReservation.workerId && (
-                          <div className="flex items-center justify-between pt-3 border-t border-border">
-                            <span className="text-sm text-ink/40 font-medium">Effectué par</span>
-                            <span className="text-sm font-bold text-accent">{employees.find(e => e.id === selectedReservation.workerId)?.fullName || (selectedReservation.workerId === currentUser.id ? currentUser.fullName : 'Inconnu')}</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="p-6 rounded-3xl bg-accent/5 border border-accent/10 space-y-4">
-                      <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-accent opacity-70">Paiement & Services</h4>
-                      <div className="space-y-3">
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm text-ink/40 font-medium">Total</span>
-                          <span className="text-sm font-bold text-ink">{formatCurrency(selectedReservation.totalPrice)}</span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm text-ink/40 font-medium">Versé</span>
-                          <span className="text-sm font-bold text-emerald-600">{formatCurrency(selectedReservation.paidAmount)}</span>
-                        </div>
-                        <div className="flex items-center justify-between pt-3 border-t border-accent/10">
-                          <span className="text-sm text-ink/40 font-bold">Reste</span>
-                          <span className="text-lg font-serif font-bold text-red-500">{formatCurrency(Math.max(0, selectedReservation.totalPrice - selectedReservation.paidAmount))}</span>
-                        </div>
-                        <div className="flex items-center justify-between pt-3 border-t border-accent/10">
-                          <span className="text-sm text-ink/40 font-medium">Statut</span>
-                          <span className={cn("text-xs font-bold px-3 py-1 rounded-full", selectedReservation.status === 'finalized' ? 'bg-green-100 text-green-700' : selectedReservation.status === 'pending' ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700')}>
-                            {selectedReservation.status === 'finalized' ? 'Finalisé' : selectedReservation.status === 'pending' ? 'En Attente' : 'Annulé'}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Services Section */}
-                  {(selectedReservation.serviceIds && selectedReservation.serviceIds.length > 0) && (
-                    <div className="p-6 rounded-3xl bg-primary-bg/50 border border-border space-y-4">
-                      <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-ink/30">Services Additionnels</h4>
-                      <div className="space-y-2">
-                        {selectedReservation.serviceIds.map((serviceId) => {
-                          const service = services.find(s => s.id === serviceId);
-                          if (!service) return null;
-                          return (
-                            <div key={serviceId} className="flex items-center justify-between p-3 bg-white rounded-lg">
-                              <div>
-                                <p className="font-bold text-ink">{service.name}</p>
-                                <p className="text-xs text-ink/40">{service.description}</p>
-                              </div>
-                              <p className="font-bold text-accent">{formatCurrency(service.price)}</p>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="flex flex-wrap gap-4">
-                    <button 
-                      onClick={() => handleEdit(selectedReservation)}
-                      className="flex-1 min-w-[180px] py-4 rounded-2xl bg-white border border-border font-bold text-ink/60 hover:text-accent hover:border-accent/40 transition-all flex items-center justify-center gap-2"
+                    {/* Premium Header */}
+                    <motion.div 
+                      initial={{ opacity: 0, y: -30 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.1, type: 'spring' }}
+                      className="sticky top-0 z-20 bg-gradient-to-r from-accent/15 via-accent/10 to-transparent border-b-2 border-accent/20 px-8 py-8 backdrop-blur-lg"
                     >
-                      <Edit2 size={18} /> Modifier
-                    </button>
-                    <button 
-                      onClick={() => setModal('changeDate')}
-                      className="flex-1 min-w-[180px] py-4 rounded-2xl bg-white border border-border font-bold text-ink/60 hover:text-accent hover:border-accent/40 transition-all flex items-center justify-center gap-2"
-                    >
-                      <CalendarIcon size={18} /> Changer Date/Heure
-                    </button>
-                    {selectedReservation.totalPrice > selectedReservation.paidAmount && (
-                      <button 
-                        onClick={() => {
-                          setCurrentPayment(0);
-                          setModal('payDebt');
-                        }}
-                        className="flex-1 min-w-[180px] py-4 rounded-2xl bg-amber-50 border border-amber-200 font-bold text-amber-600 hover:bg-amber-100 transition-all flex items-center justify-center gap-2"
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-5">
+                          <motion.div
+                            initial={{ scale: 0, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            transition={{ delay: 0.15, type: 'spring', stiffness: 200 }}
+                            className={cn(
+                              "w-16 h-16 rounded-3xl flex items-center justify-center",
+                              selectedReservation.status === 'finalized'
+                                ? "bg-emerald-100 text-emerald-600"
+                                : "bg-amber-100 text-amber-600"
+                            )}
+                          >
+                            <User size={32} />
+                          </motion.div>
+                          <motion.div
+                            initial={{ opacity: 0, x: -20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: 0.15 }}
+                          >
+                            <h3 className="text-3xl font-serif font-bold text-ink">{selectedReservation.clientName}</h3>
+                            <p className="text-accent font-bold tracking-widest uppercase text-xs mt-2">{selectedReservation.clientPhone}</p>
+                          </motion.div>
+                        </div>
+                        <motion.button 
+                          whileHover={{ scale: 1.1, rotate: 90 }}
+                          whileTap={{ scale: 0.95 }}
+                          onClick={() => setModal(null)}
+                          className="p-4 rounded-full hover:bg-gradient-to-br hover:from-accent/20 hover:to-accent/10 text-accent transition-all duration-300 shadow-lg"
+                        >
+                          <X size={28} strokeWidth={2.5} />
+                        </motion.button>
+                      </div>
+                    </motion.div>
+
+                    {/* Main Content */}
+                    <div className="p-8 space-y-6 relative z-10">
+                      <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.2 }}
+                        className="grid grid-cols-2 gap-6"
                       >
-                        <CreditCard size={18} /> Payer Dette
-                      </button>
-                    )}
-                    <button 
-                      onClick={() => setModal('delete')}
-                      className="flex-1 min-w-[180px] py-4 rounded-2xl bg-red-50 border border-red-100 font-bold text-red-500 hover:bg-red-100 transition-all flex items-center justify-center gap-2"
-                    >
-                      <Trash2 size={18} /> Supprimer
-                    </button>
-                    <button 
-                      onClick={() => setModal(null)}
-                      className="flex-1 min-w-[180px] py-4 rounded-2xl bg-ink text-white font-bold hover:bg-ink/90 transition-all"
-                    >
-                      Fermer
-                    </button>
-                  </div>
+                        <motion.div 
+                          whileHover={{ y: -4 }}
+                          className={cn(
+                            "p-6 rounded-3xl border-2 space-y-4 shadow-lg",
+                            selectedReservation.status === 'finalized'
+                              ? "bg-gradient-to-br from-emerald-50 to-emerald-100/60 border-emerald-300 shadow-emerald-200/40"
+                              : "bg-gradient-to-br from-amber-50 to-amber-100/60 border-amber-300 shadow-amber-200/40"
+                          )}
+                        >
+                          <h4 className={cn(
+                            "text-[10px] font-bold uppercase tracking-[0.2em]",
+                            selectedReservation.status === 'finalized'
+                              ? "text-emerald-700"
+                              : "text-amber-700"
+                          )}>Détails du RDV</h4>
+                          <div className="space-y-3">
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm text-ink/60 font-medium">Date</span>
+                              <span className="text-sm font-bold text-ink">{format(new Date(selectedReservation.date), 'dd MMMM yyyy', { locale: fr })}</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm text-ink/60 font-medium">Heure</span>
+                              <span className="text-sm font-bold text-ink">{selectedReservation.time}</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm text-ink/60 font-medium">Prestation</span>
+                              <span className="text-sm font-bold text-ink">{prestations.find(p => p.id === selectedReservation.prestationId)?.name}</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm text-ink/60 font-medium">Créé par</span>
+                              <span className="text-sm font-bold text-ink">{employees.find(e => e.id === selectedReservation.createdBy)?.fullName || (selectedReservation.createdBy === currentUser.id ? currentUser.fullName : 'Inconnu')}</span>
+                            </div>
+                            {selectedReservation.workerId && (
+                              <div className="flex items-center justify-between pt-3 border-t border-current/10">
+                                <span className="text-sm text-ink/60 font-medium">Effectué par</span>
+                                <span className="text-sm font-bold text-ink">{employees.find(e => e.id === selectedReservation.workerId)?.fullName || (selectedReservation.workerId === currentUser.id ? currentUser.fullName : 'Inconnu')}</span>
+                              </div>
+                            )}
+                          </div>
+                        </motion.div>
+
+                        <motion.div 
+                          whileHover={{ y: -4 }}
+                          className={cn(
+                            "p-6 rounded-3xl border-2 space-y-4 shadow-lg",
+                            selectedReservation.status === 'finalized'
+                              ? "bg-gradient-to-br from-emerald-50 to-emerald-100/60 border-emerald-300 shadow-emerald-200/40"
+                              : "bg-gradient-to-br from-amber-50 to-amber-100/60 border-amber-300 shadow-amber-200/40"
+                          )}
+                        >
+                          <h4 className={cn(
+                            "text-[10px] font-bold uppercase tracking-[0.2em]",
+                            selectedReservation.status === 'finalized'
+                              ? "text-emerald-700"
+                              : "text-amber-700"
+                          )}>Paiement & Services</h4>
+                          <div className="space-y-3">
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm text-ink/60 font-medium">Total</span>
+                              <span className="text-sm font-bold text-ink">{formatCurrency(selectedReservation.totalPrice)}</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm text-ink/60 font-medium">Versé</span>
+                              <span className="text-sm font-bold text-emerald-600">{formatCurrency(selectedReservation.paidAmount)}</span>
+                            </div>
+                            <div className="flex items-center justify-between pt-3 border-t border-current/10">
+                              <span className="text-sm text-ink/60 font-bold">Reste</span>
+                              <span className="text-lg font-serif font-bold text-red-500">{formatCurrency(Math.max(0, selectedReservation.totalPrice - selectedReservation.paidAmount))}</span>
+                            </div>
+                            <div className="flex items-center justify-between pt-3 border-t border-current/10">
+                              <span className="text-sm text-ink/60 font-medium">Statut</span>
+                              <motion.span 
+                                initial={{ scale: 0 }}
+                                animate={{ scale: 1 }}
+                                transition={{ type: 'spring', stiffness: 200 }}
+                                className={cn(
+                                  "text-xs font-bold px-3 py-1.5 rounded-full",
+                                  selectedReservation.status === 'finalized' 
+                                    ? 'bg-emerald-200 text-emerald-700 shadow-lg shadow-emerald-200/50' 
+                                    : selectedReservation.status === 'pending' 
+                                      ? 'bg-amber-200 text-amber-700 shadow-lg shadow-amber-200/50' 
+                                      : 'bg-red-200 text-red-700 shadow-lg shadow-red-200/50'
+                                )}
+                              >
+                                {selectedReservation.status === 'finalized' ? '✓ Finalisé' : selectedReservation.status === 'pending' ? '○ En Attente' : '✗ Annulé'}
+                              </motion.span>
+                            </div>
+                          </div>
+                        </motion.div>
+                      </motion.div>
+
+                      {/* Services Section */}
+                      {(selectedReservation.serviceIds && selectedReservation.serviceIds.length > 0) && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 20 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: 0.25 }}
+                          whileHover={{ y: -2 }}
+                          className={cn(
+                            "p-6 rounded-3xl border-2 space-y-4 shadow-lg",
+                            selectedReservation.status === 'finalized'
+                              ? "bg-gradient-to-br from-emerald-50 to-emerald-100/40 border-emerald-200 shadow-emerald-200/30"
+                              : "bg-gradient-to-br from-amber-50 to-amber-100/40 border-amber-200 shadow-amber-200/30"
+                          )}
+                        >
+                          <h4 className={cn(
+                            "text-[10px] font-bold uppercase tracking-[0.2em]",
+                            selectedReservation.status === 'finalized'
+                              ? "text-emerald-600"
+                              : "text-amber-600"
+                          )}>Services Additionnels</h4>
+                          <motion.div className="space-y-2">
+                            <AnimatePresence>
+                              {selectedReservation.serviceIds.map((serviceId, idx) => {
+                                const service = services.find(s => s.id === serviceId);
+                                if (!service) return null;
+                                return (
+                                  <motion.div
+                                    key={serviceId}
+                                    initial={{ opacity: 0, x: -20 }}
+                                    animate={{ opacity: 1, x: 0 }}
+                                    exit={{ opacity: 0, x: 20 }}
+                                    transition={{ delay: 0.3 + idx * 0.05, type: 'spring', stiffness: 200 }}
+                                    className={cn(
+                                      "flex items-center justify-between p-3 rounded-lg border border-current/10",
+                                      selectedReservation.status === 'finalized'
+                                        ? "bg-emerald-50/60 hover:bg-emerald-100/60"
+                                        : "bg-amber-50/60 hover:bg-amber-100/60"
+                                    )}
+                                  >
+                                    <div>
+                                      <p className="font-bold text-ink text-sm">{service.name}</p>
+                                      <p className="text-xs text-ink/40">{service.description}</p>
+                                    </div>
+                                    <p className={cn(
+                                      "font-bold",
+                                      selectedReservation.status === 'finalized'
+                                        ? "text-emerald-600"
+                                        : "text-amber-600"
+                                    )}>{formatCurrency(service.price)}</p>
+                                  </motion.div>
+                                );
+                              })}
+                            </AnimatePresence>
+                          </motion.div>
+                        </motion.div>
+                      )}
+
+                      {/* Action Buttons */}
+                      <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.3 }}
+                        className="flex flex-wrap gap-3"
+                      >
+                        <motion.button 
+                          whileHover={{ scale: 1.05 }}
+                          whileTap={{ scale: 0.95 }}
+                          onClick={() => handleEdit(selectedReservation)}
+                          className={cn(
+                            "flex-1 min-w-[160px] py-3 rounded-2xl font-bold flex items-center justify-center gap-2 border-2 shadow-lg transition-all",
+                            selectedReservation.status === 'finalized'
+                              ? "bg-emerald-100 border-emerald-300 text-emerald-700 hover:bg-emerald-200 hover:shadow-emerald-200/50"
+                              : "bg-amber-100 border-amber-300 text-amber-700 hover:bg-amber-200 hover:shadow-amber-200/50"
+                          )}
+                        >
+                          <Edit2 size={18} /> Modifier
+                        </motion.button>
+                        <motion.button 
+                          whileHover={{ scale: 1.05 }}
+                          whileTap={{ scale: 0.95 }}
+                          onClick={() => setModal('changeDate')}
+                          className={cn(
+                            "flex-1 min-w-[160px] py-3 rounded-2xl font-bold flex items-center justify-center gap-2 border-2 shadow-lg transition-all",
+                            selectedReservation.status === 'finalized'
+                              ? "bg-emerald-100 border-emerald-300 text-emerald-700 hover:bg-emerald-200 hover:shadow-emerald-200/50"
+                              : "bg-amber-100 border-amber-300 text-amber-700 hover:bg-amber-200 hover:shadow-amber-200/50"
+                          )}
+                        >
+                          <CalendarIcon size={18} /> Date/Heure
+                        </motion.button>
+                        {selectedReservation.totalPrice > selectedReservation.paidAmount && (
+                          <motion.button 
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.95 }}
+                            onClick={() => {
+                              setCurrentPayment(0);
+                              setModal('payDebt');
+                            }}
+                            className="flex-1 min-w-[160px] py-3 rounded-2xl bg-gradient-to-br from-amber-100 to-amber-50 border-2 border-amber-300 font-bold text-amber-600 hover:from-amber-200 hover:to-amber-100 hover:shadow-lg hover:shadow-amber-200/50 flex items-center justify-center gap-2 transition-all shadow-lg"
+                          >
+                            <CreditCard size={18} /> Payer
+                          </motion.button>
+                        )}
+                        <motion.button 
+                          whileHover={{ scale: 1.05 }}
+                          whileTap={{ scale: 0.95 }}
+                          onClick={() => setModal('delete')}
+                          className="flex-1 min-w-[160px] py-3 rounded-2xl bg-gradient-to-br from-red-100 to-red-50 border-2 border-red-300 font-bold text-red-600 hover:from-red-200 hover:to-red-100 hover:shadow-lg hover:shadow-red-200/50 flex items-center justify-center gap-2 transition-all shadow-lg"
+                        >
+                          <Trash2 size={18} /> Supprimer
+                        </motion.button>
+                        <motion.button 
+                          whileHover={{ scale: 1.05 }}
+                          whileTap={{ scale: 0.95 }}
+                          onClick={() => setModal(null)}
+                          className="flex-1 min-w-[160px] py-3 rounded-2xl bg-gradient-to-br from-ink via-ink to-ink/90 text-white font-bold hover:from-ink/90 hover:via-ink hover:to-ink/80 hover:shadow-lg hover:shadow-ink/20 flex items-center justify-center gap-2 transition-all shadow-lg"
+                        >
+                          Fermer
+                        </motion.button>
+                      </motion.div>
+                    </div>
+                  </motion.div>
                 </div>
               )}
 
@@ -3110,6 +3413,370 @@ const Reservations: React.FC<ReservationsProps> = ({ user: currentUser, config }
                       >
                         Retour
                       </button>
+                    </div>
+                  </motion.div>
+                </div>
+              )}
+
+              {modal === 'dayView' && selectedCalendarDay && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    onClick={() => setModal(null)}
+                    className="absolute inset-0 bg-gradient-to-br from-ink/60 via-ink/50 to-ink/60 backdrop-blur-xl"
+                  />
+                  
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.85, y: 60, rotateX: 20 }}
+                    animate={{ opacity: 1, scale: 1, y: 0, rotateX: 0 }}
+                    exit={{ opacity: 0, scale: 0.85, y: 60, rotateX: 20 }}
+                    transition={{ 
+                      type: 'spring', 
+                      damping: 12, 
+                      stiffness: 400,
+                      duration: 0.35
+                    }}
+                    style={{ perspective: 1000 }}
+                    className="relative bg-gradient-to-br from-white via-white to-primary-bg/30 rounded-[48px] shadow-2xl overflow-hidden w-full max-w-3xl max-h-[85vh] overflow-y-auto custom-scrollbar border border-white/50 will-change-transform"
+                  >
+                    {/* Animated Background Gradient */}
+                    <div className="absolute inset-0 bg-gradient-to-br from-accent/5 via-transparent to-primary-bg/20 pointer-events-none" />
+
+                    {/* Premium Header */}
+                    <motion.div 
+                      initial={{ opacity: 0, y: -30 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.1, type: 'spring' }}
+                      className="sticky top-0 z-20 bg-gradient-to-r from-accent/15 via-accent/10 to-transparent border-b-2 border-accent/20 px-12 py-10 backdrop-blur-lg"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <motion.div
+                            initial={{ opacity: 0, x: -30 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: 0.15, type: 'spring' }}
+                            className="space-y-3"
+                          >
+                            <h3 className="text-5xl font-serif font-bold bg-gradient-to-r from-ink via-accent to-ink bg-clip-text text-transparent">
+                              {format(selectedCalendarDay, 'd MMMM', { locale: fr })}
+                            </h3>
+                            <p className="text-accent font-bold text-sm uppercase tracking-[0.15em] flex items-center gap-2">
+                              <span className="w-2 h-2 rounded-full bg-accent" />
+                              {format(selectedCalendarDay, 'EEEE', { locale: fr })}
+                            </p>
+                          </motion.div>
+                        </div>
+                        <motion.button 
+                          whileHover={{ scale: 1.1, rotate: 90 }}
+                          whileTap={{ scale: 0.95 }}
+                          onClick={() => setModal(null)}
+                          className="p-4 rounded-full hover:bg-gradient-to-br hover:from-accent/20 hover:to-accent/10 text-accent transition-all duration-300 shadow-lg"
+                        >
+                          <X size={32} strokeWidth={2.5} />
+                        </motion.button>
+                      </div>
+                    </motion.div>
+
+                    {/* Main Content */}
+                    <div className="p-12 space-y-8 relative z-10">
+                      {(() => {
+                        const dayReservations = reservations
+                          .filter(r => isSameDay(new Date(r.date), selectedCalendarDay))
+                          .sort((a, b) => a.time.localeCompare(b.time));
+                        
+                        if (dayReservations.length === 0) {
+                          return (
+                            <motion.div
+                              initial={{ opacity: 0, scale: 0.9, y: 40 }}
+                              animate={{ opacity: 1, scale: 1, y: 0 }}
+                              transition={{ type: 'spring', delay: 0.2 }}
+                              className="py-32 text-center space-y-6"
+                            >
+                              <motion.div 
+                                animate={{ y: [0, -10, 0] }}
+                                transition={{ duration: 3, repeat: Infinity }}
+                                className="w-28 h-28 rounded-full bg-gradient-to-br from-accent/10 to-accent/5 flex items-center justify-center mx-auto text-accent/30 shadow-xl shadow-accent/10"
+                              >
+                                <CalendarIcon size={64} />
+                              </motion.div>
+                              <div className="space-y-3">
+                                <p className="text-2xl font-serif font-bold text-ink/20">Jour libre</p>
+                                <p className="text-base font-medium text-ink/30 italic">Aucun rendez-vous pour cette journée</p>
+                              </div>
+                            </motion.div>
+                          );
+                        }
+
+                        return (
+                          <motion.div 
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            transition={{ staggerChildren: 0.05, delayChildren: 0.2 }}
+                            className="space-y-8"
+                          >
+                            {/* Enhanced Summary Stats */}
+                            <motion.div 
+                              initial={{ opacity: 0, y: 20 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              className="grid grid-cols-3 gap-6 pb-8 border-b-2 border-border/40"
+                            >
+                              <motion.div 
+                                whileHover={{ scale: 1.08, y: -4 }}
+                                whileTap={{ scale: 0.97 }}
+                                className="p-6 rounded-3xl bg-gradient-to-br from-accent/20 to-accent/5 border-2 border-accent/30 text-center shadow-lg shadow-accent/10 group cursor-default"
+                              >
+                                <motion.p 
+                                  initial={{ opacity: 0 }}
+                                  animate={{ opacity: 1 }}
+                                  transition={{ delay: 0.25 }}
+                                  className="text-sm text-accent font-bold uppercase tracking-[0.15em]"
+                                >
+                                  Rendez-vous
+                                </motion.p>
+                                <motion.p 
+                                  initial={{ scale: 0, opacity: 0 }}
+                                  animate={{ scale: 1, opacity: 1 }}
+                                  transition={{ delay: 0.3, type: 'spring', stiffness: 200 }}
+                                  className="text-4xl font-serif font-bold text-accent mt-3 group-hover:scale-110 transition-transform"
+                                >
+                                  {dayReservations.length}
+                                </motion.p>
+                              </motion.div>
+                              
+                              <motion.div 
+                                whileHover={{ scale: 1.08, y: -4 }}
+                                whileTap={{ scale: 0.97 }}
+                                className="p-6 rounded-3xl bg-gradient-to-br from-emerald-100 to-emerald-50 border-2 border-emerald-300 text-center shadow-lg shadow-emerald/10 group cursor-default"
+                              >
+                                <motion.p 
+                                  initial={{ opacity: 0 }}
+                                  animate={{ opacity: 1 }}
+                                  transition={{ delay: 0.25 }}
+                                  className="text-sm text-emerald-700 font-bold uppercase tracking-[0.15em]"
+                                >
+                                  ✓ Finalisés
+                                </motion.p>
+                                <motion.p 
+                                  initial={{ scale: 0, opacity: 0 }}
+                                  animate={{ scale: 1, opacity: 1 }}
+                                  transition={{ delay: 0.3, type: 'spring', stiffness: 200 }}
+                                  className="text-4xl font-serif font-bold text-emerald-600 mt-3 group-hover:scale-110 transition-transform"
+                                >
+                                  {dayReservations.filter(r => r.status === 'finalized').length}
+                                </motion.p>
+                              </motion.div>
+                              
+                              <motion.div 
+                                whileHover={{ scale: 1.08, y: -4 }}
+                                whileTap={{ scale: 0.97 }}
+                                className="p-6 rounded-3xl bg-gradient-to-br from-amber-100 to-amber-50 border-2 border-amber-300 text-center shadow-lg shadow-amber/10 group cursor-default"
+                              >
+                                <motion.p 
+                                  initial={{ opacity: 0 }}
+                                  animate={{ opacity: 1 }}
+                                  transition={{ delay: 0.25 }}
+                                  className="text-sm text-amber-700 font-bold uppercase tracking-[0.15em]"
+                                >
+                                  ○ En attente
+                                </motion.p>
+                                <motion.p 
+                                  initial={{ scale: 0, opacity: 0 }}
+                                  animate={{ scale: 1, opacity: 1 }}
+                                  transition={{ delay: 0.3, type: 'spring', stiffness: 200 }}
+                                  className="text-4xl font-serif font-bold text-amber-600 mt-3 group-hover:scale-110 transition-transform"
+                                >
+                                  {dayReservations.filter(r => r.status !== 'finalized').length}
+                                </motion.p>
+                              </motion.div>
+                            </motion.div>
+
+                            {/* Premium Reservation Cards */}
+                            <motion.div className="space-y-4">
+                              <AnimatePresence mode="popLayout">
+                                {dayReservations.map((reservation, idx) => (
+                                  <motion.button
+                                    key={reservation.id}
+                                    initial={{ opacity: 0, x: -50, rotateY: 90 }}
+                                    animate={{ opacity: 1, x: 0, rotateY: 0 }}
+                                    exit={{ opacity: 0, x: 50, rotateY: -90 }}
+                                    transition={{ 
+                                      delay: 0.35 + idx * 0.08,
+                                      type: 'spring',
+                                      stiffness: 200,
+                                      damping: 20
+                                    }}
+                                    whileHover={{ scale: 1.03, x: 8, shadow: '0 20px 40px rgba(0,0,0,0.1)' }}
+                                    whileTap={{ scale: 0.97 }}
+                                    onClick={() => {
+                                      setSelectedReservation(reservation);
+                                      setModal('details');
+                                    }}
+                                    className={cn(
+                                      "w-full p-8 rounded-3xl border-2 text-left transition-all duration-300 group cursor-pointer overflow-hidden relative",
+                                      reservation.status === 'finalized'
+                                        ? "bg-gradient-to-br from-emerald-50 to-emerald-100/60 border-emerald-300 hover:shadow-xl hover:shadow-emerald-200/60" 
+                                        : "bg-gradient-to-br from-amber-50 to-amber-100/60 border-amber-300 hover:shadow-xl hover:shadow-amber-200/60"
+                                    )}
+                                  >
+                                    {/* Background Shimmer Effect */}
+                                    <motion.div 
+                                      className={cn(
+                                        "absolute inset-0 opacity-0 group-hover:opacity-50 transition-opacity duration-300",
+                                        reservation.status === 'finalized'
+                                          ? "bg-gradient-to-r from-emerald-400/20 via-transparent to-emerald-400/20"
+                                          : "bg-gradient-to-r from-amber-400/20 via-transparent to-amber-400/20"
+                                      )}
+                                    />
+
+                                    <div className="relative z-10 flex items-center justify-between">
+                                      {/* Left Section: Time and Client Info */}
+                                      <div className="flex-1 flex items-center gap-8">
+                                        {/* Time Box */}
+                                        <motion.div 
+                                          whileHover={{ scale: 1.1, rotate: 2 }}
+                                          className={cn(
+                                            "flex-shrink-0 w-20 h-20 rounded-3xl flex flex-col items-center justify-center font-bold shadow-lg",
+                                            reservation.status === 'finalized'
+                                              ? "bg-gradient-to-br from-emerald-200 to-emerald-100 text-emerald-700"
+                                              : "bg-gradient-to-br from-amber-200 to-amber-100 text-amber-700"
+                                          )}
+                                        >
+                                          <span className="text-xs opacity-80 font-semibold leading-none mb-1">
+                                            {reservation.time.split(':')[0]}h
+                                          </span>
+                                          <span className="text-2xl font-serif font-bold leading-none">
+                                            {reservation.time.split(':')[1]}
+                                          </span>
+                                        </motion.div>
+
+                                        {/* Client Info */}
+                                        <div className="flex-1 space-y-2">
+                                          <motion.h4 
+                                            initial={{ opacity: 0 }}
+                                            animate={{ opacity: 1 }}
+                                            transition={{ delay: 0.4 + idx * 0.08 }}
+                                            className="text-2xl font-serif font-bold text-ink"
+                                          >
+                                            {reservation.clientName}
+                                          </motion.h4>
+                                          <motion.p 
+                                            initial={{ opacity: 0 }}
+                                            animate={{ opacity: 1 }}
+                                            transition={{ delay: 0.45 + idx * 0.08 }}
+                                            className={cn(
+                                              "text-sm font-bold",
+                                              reservation.status === 'finalized'
+                                                ? "text-emerald-700"
+                                                : "text-amber-700"
+                                            )}
+                                          >
+                                            {reservation.prestationName}
+                                          </motion.p>
+                                          <motion.p 
+                                            initial={{ opacity: 0 }}
+                                            animate={{ opacity: 1 }}
+                                            transition={{ delay: 0.5 + idx * 0.08 }}
+                                            className="text-xs font-semibold text-ink/50 flex items-center gap-2"
+                                          >
+                                            <Phone size={12} />
+                                            {reservation.clientPhone}
+                                          </motion.p>
+                                        </div>
+                                      </div>
+
+                                      {/* Right Section: Price and Status */}
+                                      <motion.div 
+                                        initial={{ opacity: 0, x: 20 }}
+                                        animate={{ opacity: 1, x: 0 }}
+                                        transition={{ delay: 0.4 + idx * 0.08 }}
+                                        className="flex items-center gap-8 flex-shrink-0"
+                                      >
+                                        <div className="text-right">
+                                          <motion.p 
+                                            className={cn(
+                                              "text-xs font-bold uppercase tracking-widest mb-2",
+                                              reservation.status === 'finalized'
+                                                ? "text-emerald-600"
+                                                : "text-amber-600"
+                                            )}
+                                          >
+                                            {reservation.status === 'finalized' ? '✓ Terminé' : '○ Prévu'}
+                                          </motion.p>
+                                          <motion.p 
+                                            initial={{ scale: 0 }}
+                                            animate={{ scale: 1 }}
+                                            transition={{ delay: 0.45 + idx * 0.08, type: 'spring' }}
+                                            className="text-3xl font-serif font-bold text-ink group-hover:text-accent transition-colors"
+                                          >
+                                            {formatCurrency(reservation.totalPrice)}
+                                          </motion.p>
+                                          {reservation.totalPrice - reservation.paidAmount > 0 && (
+                                            <motion.p 
+                                              initial={{ opacity: 0 }}
+                                              animate={{ opacity: 1 }}
+                                              transition={{ delay: 0.5 + idx * 0.08 }}
+                                              className="text-xs font-bold text-red-500 mt-2"
+                                            >
+                                              Reste: {formatCurrency(reservation.totalPrice - reservation.paidAmount)}
+                                            </motion.p>
+                                          )}
+                                        </div>
+
+                                        {/* Action Arrow */}
+                                        <motion.div
+                                          animate={{ x: [0, 5, 0] }}
+                                          transition={{ duration: 2, repeat: Infinity }}
+                                          className={cn(
+                                            "w-12 h-12 rounded-full flex items-center justify-center transition-all group-hover:scale-125",
+                                            reservation.status === 'finalized'
+                                              ? "bg-emerald-200 text-emerald-700 group-hover:bg-emerald-300"
+                                              : "bg-amber-200 text-amber-700 group-hover:bg-amber-300"
+                                          )}
+                                        >
+                                          <ChevronRight size={24} strokeWidth={2.5} />
+                                        </motion.div>
+                                      </motion.div>
+                                    </div>
+
+                                    {/* Services Preview */}
+                                    {reservation.serviceIds && reservation.serviceIds.length > 0 && (
+                                      <motion.div
+                                        initial={{ opacity: 0, height: 0 }}
+                                        animate={{ opacity: 1, height: 'auto' }}
+                                        transition={{ delay: 0.5 + idx * 0.08 }}
+                                        className="mt-6 pt-6 border-t-2 border-current/10 flex flex-wrap gap-2"
+                                      >
+                                        {reservation.serviceIds.map((serviceId, sidx) => {
+                                          const service = services.find(s => s.id === serviceId);
+                                          return (
+                                            <motion.span
+                                              key={serviceId}
+                                              initial={{ opacity: 0, scale: 0.6 }}
+                                              animate={{ opacity: 1, scale: 1 }}
+                                              transition={{ delay: 0.55 + idx * 0.08 + sidx * 0.05, type: 'spring', stiffness: 200 }}
+                                              className={cn(
+                                                "px-4 py-1.5 rounded-full text-[11px] font-bold uppercase tracking-wider shadow-sm",
+                                                reservation.status === 'finalized'
+                                                  ? "bg-emerald-200/80 text-emerald-800 border border-emerald-300/80"
+                                                  : "bg-amber-200/80 text-amber-800 border border-amber-300/80"
+                                              )}
+                                            >
+                                              ✂ {service?.name}
+                                            </motion.span>
+                                          );
+                                        })}
+                                      </motion.div>
+                                    )}
+                                  </motion.button>
+                                ))}
+                              </AnimatePresence>
+                            </motion.div>
+                          </motion.div>
+                        );
+                      })()}
                     </div>
                   </motion.div>
                 </div>

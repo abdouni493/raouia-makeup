@@ -100,17 +100,30 @@ const Prestations: React.FC = () => {
   const handleDelete = async () => {
     if (!deleteConfirm) return;
     const table = deleteConfirm.type === 'prestation' ? 'prestations' : 'services';
-    const { error } = await supabase
-      .from(table)
-      .delete()
-      .eq('id', deleteConfirm.id);
+    
+    try {
+      console.log(`[DELETE] Starting ${deleteConfirm.type} deletion:`, deleteConfirm.id);
+      
+      const { data, error } = await supabase
+        .from(table)
+        .delete()
+        .eq('id', deleteConfirm.id)
+        .select();
 
-    if (error) {
-      console.error(`Error deleting ${deleteConfirm.type}:`, error);
-    } else {
-      fetchData();
+      if (error) {
+        console.error(`[DELETE ERROR] Failed to delete ${deleteConfirm.type}:`, error);
+        throw error;
+      }
+
+      console.log(`[DELETE SUCCESS] ${deleteConfirm.type} deleted successfully:`, data);
+      await fetchData();
+      setDeleteConfirm(null);
+      alert(`${deleteConfirm.type === 'prestation' ? 'Prestation' : 'Service'} supprimé avec succès`);
+    } catch (error) {
+      console.error(`[DELETE CRITICAL ERROR] ${deleteConfirm.type}:`, error);
+      alert(`Erreur lors de la suppression: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setDeleteConfirm(null);
     }
-    setDeleteConfirm(null);
   };
 
   return (
@@ -144,7 +157,7 @@ const Prestations: React.FC = () => {
                 <div className="w-14 h-14 rounded-2xl bg-accent/10 flex items-center justify-center text-accent shadow-inner group-hover:bg-accent group-hover:text-white transition-all duration-500">
                   <Scissors size={28} />
                 </div>
-                <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-all duration-300">
+                <div className="flex gap-2 opacity-100 transition-all duration-300">
                   <button 
                     onClick={() => openModal('prestation', 'edit', p)}
                     className="p-2.5 rounded-xl bg-white border border-border text-ink/40 hover:text-accent hover:border-accent/40 transition-all shadow-sm"
@@ -209,7 +222,7 @@ const Prestations: React.FC = () => {
               </div>
               <div className="flex items-center gap-6">
                 <span className="font-serif font-bold text-xl text-accent">{formatCurrency(s.price)}</span>
-                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all duration-300">
+                <div className="flex gap-1 opacity-100 transition-all duration-300">
                   <button 
                     onClick={() => openModal('service', 'edit', s)}
                     className="p-2 text-ink/30 hover:text-accent transition-colors"

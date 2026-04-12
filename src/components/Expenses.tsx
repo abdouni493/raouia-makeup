@@ -102,17 +102,33 @@ const Expenses: React.FC = () => {
   };
 
   const handleDelete = async () => {
-    if (expenseToDelete) {
-      const { error } = await supabase
+    if (!expenseToDelete) {
+      console.warn('[DELETE] No expense selected for deletion');
+      return;
+    }
+    
+    try {
+      console.log('[DELETE] Starting expense deletion:', expenseToDelete);
+      
+      const { data, error } = await supabase
         .from('expenses')
         .delete()
-        .eq('id', expenseToDelete);
-      
+        .eq('id', expenseToDelete)
+        .select();
+
       if (error) {
-        console.error('Error deleting expense:', error);
-      } else {
-        fetchExpenses();
+        console.error('[DELETE ERROR] Failed to delete expense:', error);
+        throw error;
       }
+
+      console.log('[DELETE SUCCESS] Expense deleted successfully:', data);
+      setIsDeleteModalOpen(false);
+      setExpenseToDelete(null);
+      await fetchExpenses();
+      alert('Dépense supprimée avec succès');
+    } catch (error) {
+      console.error('[DELETE CRITICAL ERROR] Expense deletion failed:', error);
+      alert(`Erreur lors de la suppression: ${error instanceof Error ? error.message : 'Unknown error'}`);
       setIsDeleteModalOpen(false);
       setExpenseToDelete(null);
     }
@@ -217,26 +233,6 @@ const Expenses: React.FC = () => {
             <p className="text-white/60 text-sm mb-8 relative z-10 font-medium">Mois de Mars 2025</p>
             <div className="text-5xl font-serif font-bold mb-10 relative z-10 tracking-tight">
               {formatCurrency(expenses.reduce((acc, curr) => acc + curr.cost, 0))}
-            </div>
-            <div className="space-y-6 relative z-10">
-              <div className="space-y-2">
-                <div className="flex justify-between text-xs font-bold uppercase tracking-widest">
-                  <span className="opacity-70">Frais Fixes</span>
-                  <span>{formatCurrency(120000)}</span>
-                </div>
-                <div className="w-full bg-white/20 h-2 rounded-full overflow-hidden">
-                  <div className="bg-white h-full w-[85%] rounded-full"></div>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <div className="flex justify-between text-xs font-bold uppercase tracking-widest">
-                  <span className="opacity-70">Frais Variables</span>
-                  <span>{formatCurrency(expenses.reduce((acc, curr) => acc + curr.cost, 0) - 120000)}</span>
-                </div>
-                <div className="w-full bg-white/20 h-2 rounded-full overflow-hidden">
-                  <div className="bg-white h-full w-[15%] rounded-full"></div>
-                </div>
-              </div>
             </div>
           </motion.div>
 
@@ -385,13 +381,13 @@ const Expenses: React.FC = () => {
               </p>
               <div className="flex gap-4">
                 <button
-                  onClick={() => setIsDeleteModalOpen(false)}
+                  onClick={(e) => { e.stopPropagation(); setIsDeleteModalOpen(false); }}
                   className="flex-1 py-4 rounded-2xl bg-primary-bg text-ink/60 font-bold hover:bg-border/50 transition-all"
                 >
                   Annuler
                 </button>
                 <button
-                  onClick={handleDelete}
+                  onClick={(e) => { e.stopPropagation(); handleDelete(); }}
                   className="flex-1 py-4 rounded-2xl bg-red-500 text-white font-bold shadow-lg shadow-red-500/20 hover:bg-red-600 transition-all"
                 >
                   Supprimer
