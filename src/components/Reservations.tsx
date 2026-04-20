@@ -154,7 +154,7 @@ const Reservations: React.FC<ReservationsProps> = ({ user: currentUser, config }
         email: '',
         fullName: e.full_name,
         role: e.role,
-        paymentType: e.payment_type,
+        paymentType: e.payment_type as 'days' | 'month' | 'percentage' | undefined,
         percentage: e.percentage,
         createdAt: e.created_at
       })));
@@ -194,13 +194,27 @@ const Reservations: React.FC<ReservationsProps> = ({ user: currentUser, config }
     }
   }, [step, selectedPrestation, selectedServices, services]);
 
-  const handleNext = () => setStep(step + 1);
-  const handleBack = () => setStep(step - 1);
+  const handleNext = () => {
+    // If no services exist, skip step 3
+    if (step === 2 && services.length === 0) {
+      setStep(4);
+    } else {
+      setStep(step + 1);
+    }
+  };
+  const handleBack = () => {
+    // If no services exist, skip step 3 going back
+    if (step === 4 && services.length === 0) {
+      setStep(2);
+    } else {
+      setStep(step - 1);
+    }
+  };
 
   const calculateTotal = () => {
     let total = selectedPrestation?.price || 0;
-    selectedServices.forEach(id => {
-      const s = services.find(serv => serv.id === id);
+    selectedServices.forEach((id: string) => {
+      const s = services.find((serv: Service) => serv.id === id);
       if (s) total += s.price;
     });
     setTotalPrice(total);
@@ -264,7 +278,7 @@ const Reservations: React.FC<ReservationsProps> = ({ user: currentUser, config }
   const handleEdit = (res: Reservation) => {
     setSelectedReservation(res);
     setIsEditing(true);
-    setSelectedPrestation(prestations.find(p => p.id === res.prestationId) || null);
+    setSelectedPrestation(prestations.find((p: Prestation) => p.id === res.prestationId) || null);
     setSelectedDate(new Date(res.date));
     setClientInfo({ name: res.clientName, phone: res.clientPhone, time: res.time });
     setSelectedServices(res.serviceIds);
@@ -295,8 +309,8 @@ const Reservations: React.FC<ReservationsProps> = ({ user: currentUser, config }
     
     try {
       // Calculate total services price
-      const servicesTotal = finalizeServices.reduce((sum, serviceId) => {
-        const service = services.find(s => s.id === serviceId);
+      const servicesTotal = finalizeServices.reduce((sum: number, serviceId: string) => {
+        const service = services.find((s: Service) => s.id === serviceId);
         return sum + (service?.price || 0);
       }, 0);
       
@@ -321,18 +335,30 @@ const Reservations: React.FC<ReservationsProps> = ({ user: currentUser, config }
         return;
       }
 
-      // 2. Add current user as the main worker if percentage-based
-      if (currentUser.paymentType === 'percentage') {
-        const currentUserAmount = workerAmounts[currentUser.id] || (finalPrice * (currentUser.percentage || 0) / 100);
+      // 2. Add current user as the main worker if percentage-based OR journalier-based
+      if (currentUser.paymentType === 'percentage' || currentUser.paymentType === 'days') {
+        const currentUserAmount = workerAmounts[currentUser.id] || (
+          currentUser.paymentType === 'percentage' 
+            ? finalPrice * (currentUser.percentage || 0) / 100
+            : finalPrice // For journalier, amount is the total price
+        );
         
-        const { error: mainWorkerError } = await supabase
+        console.log('Adding worker to reservation_workers:', {
+          reservation_id: selectedReservation.id,
+          worker_id: currentUser.id,
+          payment_type: currentUser.paymentType,
+          amount: currentUserAmount,
+          percentage: currentUser.paymentType === 'percentage' ? (currentUser.percentage || 0) : 0
+        });
+
+        const { error: mainWorkerError, data: mainWorkerData } = await supabase
           .from('reservation_workers')
           .upsert({
             reservation_id: selectedReservation.id,
             worker_id: currentUser.id,
             payment_type: currentUser.paymentType,
             amount: currentUserAmount,
-            percentage: currentUser.percentage || 0,
+            percentage: currentUser.paymentType === 'percentage' ? (currentUser.percentage || 0) : 0,
             status: 'unpaid'
           }, {
             onConflict: 'reservation_id,worker_id'
@@ -340,6 +366,8 @@ const Reservations: React.FC<ReservationsProps> = ({ user: currentUser, config }
 
         if (mainWorkerError) {
           console.error('Error saving main worker:', mainWorkerError);
+        } else {
+          console.log('Main worker saved successfully:', mainWorkerData);
         }
       }
 
@@ -424,7 +452,7 @@ const Reservations: React.FC<ReservationsProps> = ({ user: currentUser, config }
   };
 
   const getWorkerPercentage = (workerId: string, amount: number) => {
-    const worker = employees.find(e => e.id === workerId) || (workerId === currentUser.id ? currentUser : null);
+    const worker = employees.find((e: Employee) => e.id === workerId) || (workerId === currentUser.id ? currentUser : null);
     if (worker?.paymentType === 'percentage' && worker.percentage) {
       return (amount * worker.percentage) / 100;
     }
@@ -491,7 +519,7 @@ const Reservations: React.FC<ReservationsProps> = ({ user: currentUser, config }
                     type="text"
                     placeholder="Rechercher par nom ou téléphone..."
                     value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
                     className="w-full pl-12 pr-4 py-3 rounded-2xl bg-white/40 border border-border text-ink placeholder:text-ink/40 font-medium focus:outline-none focus:border-accent/40 focus:bg-white transition-all duration-300"
                   />
                   {searchQuery && (
@@ -516,7 +544,7 @@ const Reservations: React.FC<ReservationsProps> = ({ user: currentUser, config }
                 >
                   Tous
                 </button>
-                {prestations.map((prestation) => (
+                {prestations.map((prestation: Prestation) => (
                   <button 
                     key={prestation.id}
                     onClick={() => setFilteredPrestationId(prestation.id)}
@@ -998,7 +1026,7 @@ const Reservations: React.FC<ReservationsProps> = ({ user: currentUser, config }
                 <X size={24} />
               </button>
               <div className="flex items-center gap-6">
-                {[1, 2, 3, 4].map((s) => (
+                {[1, 2, 3, 4].filter(s => s !== 3 || services.length > 0).map((s) => (
                   <div key={s} className="flex flex-col items-center gap-2">
                     <div 
                       className={cn(
@@ -1310,7 +1338,7 @@ const Reservations: React.FC<ReservationsProps> = ({ user: currentUser, config }
               </motion.div>
             )}
 
-            {step === 3 && (
+            {step === 3 && services.length > 0 && (
               <motion.div 
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
@@ -2139,7 +2167,7 @@ const Reservations: React.FC<ReservationsProps> = ({ user: currentUser, config }
                                             {
                                               workerId: emp.id,
                                               workerName: emp.fullName,
-                                              paymentType: emp.paymentType,
+                                              paymentType: emp.paymentType || '',
                                               percentage: emp.percentage || 0,
                                               amount,
                                               isAdded: true
@@ -2258,7 +2286,7 @@ const Reservations: React.FC<ReservationsProps> = ({ user: currentUser, config }
                                     onClick={() => setEditingWorkerAmountId(currentUser.id)}
                                     className="w-full p-2 rounded-lg bg-accent/10 border border-accent/20 hover:bg-accent/20 flex items-center justify-between group"
                                   >
-                                    <span className="font-serif font-bold text-accent">{formatCurrency(workerAmounts[currentUser.id] || (finalPrice * currentUser.percentage / 100))}</span>
+                                    <span className="font-serif font-bold text-accent">{formatCurrency(workerAmounts[currentUser.id] || (finalPrice * (currentUser.percentage || 0) / 100))}</span>
                                     <Edit2 size={14} className="text-accent/60 group-hover:text-accent" />
                                   </button>
                                 )}
@@ -3494,7 +3522,7 @@ const Reservations: React.FC<ReservationsProps> = ({ user: currentUser, config }
                           onClick={() => setModal(null)}
                           className="p-2 sm:p-3 md:p-4 rounded-full hover:bg-gradient-to-br hover:from-accent/20 hover:to-accent/10 text-accent transition-all duration-300 shadow-lg"
                         >
-                          <X size={24} sm:size={28} md:size={32} strokeWidth={2.5} />
+                          <X size={24} className="sm:scale-[1.17] md:scale-[1.33]" strokeWidth={2.5} />
                         </motion.button>
                       </div>
                     </motion.div>
@@ -3627,7 +3655,7 @@ const Reservations: React.FC<ReservationsProps> = ({ user: currentUser, config }
                                       stiffness: 200,
                                       damping: 20
                                     }}
-                                    whileHover={{ scale: 1.03, x: 8, shadow: '0 20px 40px rgba(0,0,0,0.1)' }}
+                                    whileHover={{ scale: 1.03, x: 8 }}
                                     whileTap={{ scale: 0.97 }}
                                     onClick={() => {
                                       setSelectedReservation(reservation);

@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { 
-  DollarSign, Clock, AlertCircle, Check, TrendingUp, Calendar, User
+  DollarSign, Clock, AlertCircle, Check, TrendingUp, Calendar, 
+  ChevronDown, ChevronUp, Wallet, X, Receipt, Users
 } from 'lucide-react';
 import { User as UserType, EmployeePayment } from '../types';
 import { supabase } from '../lib/supabase';
@@ -11,11 +12,19 @@ interface WorkerPaymentsProps {
   user: UserType;
 }
 
+interface ReservationDetail {
+  clientName: string;
+  clientPhone?: string;
+  date: string;
+  amount: number;
+  percentage?: number;
+}
+
 const WorkerPayments: React.FC<WorkerPaymentsProps> = ({ user }) => {
-  const [payments, setPayments] = useState<EmployeePayment[]>([]);
-  const [absences, setAbsences] = useState<EmployeePayment[]>([]);
-  const [acomptes, setAcomptes] = useState<EmployeePayment[]>([]);
+  const [allPayments, setAllPayments] = useState<EmployeePayment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'all' | 'salary' | 'acompte' | 'absence'>('all');
 
   useEffect(() => {
     fetchPaymentData();
@@ -31,9 +40,21 @@ const WorkerPayments: React.FC<WorkerPaymentsProps> = ({ user }) => {
         .order('date', { ascending: false });
 
       if (!error && data) {
-        setPayments(data.filter(p => p.type === 'payment'));
-        setAbsences(data.filter(p => p.type === 'absence'));
-        setAcomptes(data.filter(p => p.type === 'acompte'));
+        const mapped: EmployeePayment[] = data.map(p => ({
+          id: p.id,
+          employeeId: p.employee_id,
+          amount: p.amount,
+          type: p.type,
+          description: p.description,
+          date: p.date,
+          status: p.status || 'unpaid',
+          reservation_details: p.reservation_details
+            ? (typeof p.reservation_details === 'string'
+                ? p.reservation_details
+                : JSON.stringify(p.reservation_details))
+            : undefined
+        }));
+        setAllPayments(mapped);
       }
     } catch (error) {
       console.error('Error fetching payments:', error);
@@ -42,256 +63,245 @@ const WorkerPayments: React.FC<WorkerPaymentsProps> = ({ user }) => {
     }
   };
 
-  const totalEarnings = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
-  const totalAbsences = absences.reduce((sum, a) => sum + (a.amount || 0), 0);
-  const totalAcomptes = acomptes.reduce((sum, a) => sum + (a.amount || 0), 0);
-  const netAmount = totalEarnings - totalAbsences - totalAcomptes;
-
-  const cardVariants = {
-    hidden: { opacity: 0, y: 20 },
-    visible: (i: number) => ({
-      opacity: 1,
-      y: 0,
-      transition: { delay: i * 0.1 }
-    })
+  const parseReservationDetails = (raw?: string): ReservationDetail[] => {
+    if (!raw) return [];
+    try {
+      const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
   };
 
+  const salaryPayments = allPayments.filter(p => p.type === 'salary');
+  const acomptePayments = allPayments.filter(p => p.type === 'acompte');
+  const absencePayments = allPayments.filter(p => p.type === 'absence');
+
+  const totalSalary = salaryPayments.reduce((s, p) => s + (p.amount || 0), 0);
+  const totalAcomptes = acomptePayments.reduce((s, p) => s + (p.amount || 0), 0);
+  const totalAbsences = absencePayments.reduce((s, p) => s + (p.amount || 0), 0);
+
+  const filteredPayments = activeTab === 'all' ? allPayments
+    : activeTab === 'salary' ? salaryPayments
+    : activeTab === 'acompte' ? acomptePayments
+    : absencePayments;
+
+  const formatDate = (d: string) =>
+    new Date(d).toLocaleDateString('fr-FR', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
+
+  const typeConfig = {
+    salary: { label: 'Paiement Salaire', color: 'emerald', icon: Check, bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'text-emerald-700', badge: 'bg-emerald-100 text-emerald-700' },
+    acompte: { label: 'Acompte', color: 'blue', icon: Wallet, bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-700', badge: 'bg-blue-100 text-blue-700' },
+    absence: { label: 'Absence', color: 'red', icon: AlertCircle, bg: 'bg-red-50', border: 'border-red-200', text: 'text-red-700', badge: 'bg-red-100 text-red-700' },
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
+        <div className="w-12 h-12 border-4 border-accent/20 border-t-accent rounded-full animate-spin" />
+        <p className="text-ink/40 font-medium animate-pulse">Chargement de vos paiements...</p>
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-8 max-w-5xl mx-auto">
+      {/* Header */}
+      <div>
+        <h2 className="text-4xl font-serif font-bold text-ink tracking-tight">Mes Paiements</h2>
+        <p className="text-ink/40 mt-2 font-medium">Consultez l'historique de vos salaires, acomptes et absences</p>
+      </div>
+
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <motion.div
-          custom={0}
-          initial="hidden"
-          animate="visible"
-          variants={cardVariants}
-          whileHover={{ y: -5 }}
-          className="card-premium p-6 border-l-4 border-emerald-500"
-        >
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-ink/60 text-sm font-medium">Paiements Totaux</p>
-              <p className="text-3xl font-bold text-ink mt-2">{formatCurrency(totalEarnings)}</p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+        {[
+          { label: 'Total Salaires', value: totalSalary, icon: Check, gradient: 'from-emerald-500/10 to-emerald-400/5', border: 'border-emerald-200/60', iconBg: 'bg-emerald-500/10', iconColor: 'text-emerald-600', valueColor: 'text-emerald-700' },
+          { label: 'Total Acomptes', value: totalAcomptes, icon: Wallet, gradient: 'from-blue-500/10 to-blue-400/5', border: 'border-blue-200/60', iconBg: 'bg-blue-500/10', iconColor: 'text-blue-600', valueColor: 'text-blue-700' },
+          { label: 'Total Absences', value: totalAbsences, icon: AlertCircle, gradient: 'from-red-500/10 to-red-400/5', border: 'border-red-200/60', iconBg: 'bg-red-500/10', iconColor: 'text-red-600', valueColor: 'text-red-700' },
+          { label: 'Net Reçu', value: totalSalary, icon: TrendingUp, gradient: 'from-accent/10 to-accent/5', border: 'border-accent/30', iconBg: 'bg-accent/10', iconColor: 'text-accent', valueColor: 'text-accent' },
+        ].map((card, i) => (
+          <motion.div
+            key={i}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: i * 0.08 }}
+            whileHover={{ y: -4, transition: { duration: 0.2 } }}
+            className={`card-premium p-6 bg-gradient-to-br ${card.gradient} border ${card.border}`}
+          >
+            <div className="flex items-start justify-between">
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-bold text-ink/50 uppercase tracking-widest mb-3">{card.label}</p>
+                <p className={`text-2xl font-serif font-bold ${card.valueColor} tracking-tight`}>
+                  {formatCurrency(card.value)}
+                </p>
+              </div>
+              <div className={`w-11 h-11 rounded-2xl ${card.iconBg} flex items-center justify-center flex-shrink-0`}>
+                <card.icon size={20} className={card.iconColor} />
+              </div>
             </div>
-            <div className="w-14 h-14 rounded-full bg-emerald-500/10 flex items-center justify-center">
-              <Check className="text-emerald-500 w-7 h-7" />
-            </div>
-          </div>
-        </motion.div>
-
-        <motion.div
-          custom={1}
-          initial="hidden"
-          animate="visible"
-          variants={cardVariants}
-          whileHover={{ y: -5 }}
-          className="card-premium p-6 border-l-4 border-amber-500"
-        >
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-ink/60 text-sm font-medium">Acomptes</p>
-              <p className="text-3xl font-bold text-ink mt-2">{formatCurrency(totalAcomptes)}</p>
-            </div>
-            <div className="w-14 h-14 rounded-full bg-amber-500/10 flex items-center justify-center">
-              <Clock className="text-amber-500 w-7 h-7" />
-            </div>
-          </div>
-        </motion.div>
-
-        <motion.div
-          custom={2}
-          initial="hidden"
-          animate="visible"
-          variants={cardVariants}
-          whileHover={{ y: -5 }}
-          className="card-premium p-6 border-l-4 border-red-500"
-        >
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-ink/60 text-sm font-medium">Absences</p>
-              <p className="text-3xl font-bold text-ink mt-2">{formatCurrency(totalAbsences)}</p>
-            </div>
-            <div className="w-14 h-14 rounded-full bg-red-500/10 flex items-center justify-center">
-              <AlertCircle className="text-red-500 w-7 h-7" />
-            </div>
-          </div>
-        </motion.div>
-
-        <motion.div
-          custom={3}
-          initial="hidden"
-          animate="visible"
-          variants={cardVariants}
-          whileHover={{ y: -5 }}
-          className="card-premium p-6 border-l-4 border-blue-500 bg-gradient-to-br from-blue-50 to-white"
-        >
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-ink/60 text-sm font-medium">Net à recevoir</p>
-              <p className="text-3xl font-bold text-blue-600 mt-2">{formatCurrency(netAmount)}</p>
-            </div>
-            <div className="w-14 h-14 rounded-full bg-blue-500/10 flex items-center justify-center">
-              <TrendingUp className="text-blue-500 w-7 h-7" />
-            </div>
-          </div>
-        </motion.div>
+          </motion.div>
+        ))}
       </div>
 
-      {/* Detailed Tables */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Payments Table */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="card-premium p-6"
-        >
-          <div className="flex items-center gap-2 mb-6">
-            <div className="w-10 h-10 rounded-full bg-emerald-500/10 flex items-center justify-center">
-              <Check className="text-emerald-500 w-5 h-5" />
-            </div>
-            <h3 className="text-lg font-bold text-ink">Paiements</h3>
-            <span className="ml-auto text-sm font-bold bg-emerald-500/10 text-emerald-600 px-3 py-1 rounded-full">
-              {payments.length}
-            </span>
-          </div>
-
-          <div className="space-y-3 max-h-96 overflow-y-auto">
-            {payments.length === 0 ? (
-              <p className="text-ink/40 text-center py-8">Aucun paiement pour le moment</p>
-            ) : (
-              payments.map(p => (
-                <motion.div
-                  key={p.id}
-                  whileHover={{ x: 4 }}
-                  className="p-4 bg-gradient-to-r from-emerald-50 to-transparent rounded-xl border border-emerald-200/50 hover:border-emerald-300 transition-colors"
-                >
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <p className="font-bold text-ink">Paiement</p>
-                      <div className="flex items-center gap-2 text-sm text-ink/60 mt-1">
-                        <Calendar size={14} />
-                        {new Date(p.date).toLocaleDateString('fr-FR', {
-                          day: '2-digit',
-                          month: 'long',
-                          year: 'numeric'
-                        })}
-                      </div>
-                      {p.description && (
-                        <p className="text-xs text-ink/40 mt-2">{p.description}</p>
-                      )}
-                    </div>
-                    <p className="font-bold text-emerald-600 text-lg">{formatCurrency(p.amount)}</p>
-                  </div>
-                </motion.div>
-              ))
-            )}
-          </div>
-        </motion.div>
-
-        {/* Acomptes Table */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-          className="card-premium p-6"
-        >
-          <div className="flex items-center gap-2 mb-6">
-            <div className="w-10 h-10 rounded-full bg-amber-500/10 flex items-center justify-center">
-              <Clock className="text-amber-500 w-5 h-5" />
-            </div>
-            <h3 className="text-lg font-bold text-ink">Acomptes</h3>
-            <span className="ml-auto text-sm font-bold bg-amber-500/10 text-amber-600 px-3 py-1 rounded-full">
-              {acomptes.length}
-            </span>
-          </div>
-
-          <div className="space-y-3 max-h-96 overflow-y-auto">
-            {acomptes.length === 0 ? (
-              <p className="text-ink/40 text-center py-8">Aucun acompte pour le moment</p>
-            ) : (
-              acomptes.map(a => (
-                <motion.div
-                  key={a.id}
-                  whileHover={{ x: 4 }}
-                  className="p-4 bg-gradient-to-r from-amber-50 to-transparent rounded-xl border border-amber-200/50 hover:border-amber-300 transition-colors"
-                >
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <p className="font-bold text-ink">Acompte</p>
-                      <div className="flex items-center gap-2 text-sm text-ink/60 mt-1">
-                        <Calendar size={14} />
-                        {new Date(a.date).toLocaleDateString('fr-FR', {
-                          day: '2-digit',
-                          month: 'long',
-                          year: 'numeric'
-                        })}
-                      </div>
-                      {a.description && (
-                        <p className="text-xs text-ink/40 mt-2">{a.description}</p>
-                      )}
-                    </div>
-                    <p className="font-bold text-amber-600 text-lg">{formatCurrency(a.amount)}</p>
-                  </div>
-                </motion.div>
-              ))
-            )}
-          </div>
-        </motion.div>
+      {/* Tab Filters */}
+      <div className="flex gap-2 bg-primary-bg/60 p-1.5 rounded-2xl border border-border/40 w-fit">
+        {([
+          { key: 'all', label: 'Tous', count: allPayments.length },
+          { key: 'salary', label: 'Salaires', count: salaryPayments.length },
+          { key: 'acompte', label: 'Acomptes', count: acomptePayments.length },
+          { key: 'absence', label: 'Absences', count: absencePayments.length },
+        ] as const).map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all duration-200 flex items-center gap-1.5 ${
+              activeTab === tab.key
+                ? 'bg-white shadow-sm text-accent border border-accent/20'
+                : 'text-ink/50 hover:text-ink'
+            }`}
+          >
+            {tab.label}
+            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+              activeTab === tab.key ? 'bg-accent/10 text-accent' : 'bg-ink/10 text-ink/50'
+            }`}>{tab.count}</span>
+          </button>
+        ))}
       </div>
 
-      {/* Absences Table */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.4 }}
-        className="card-premium p-6"
-      >
-        <div className="flex items-center gap-2 mb-6">
-          <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center">
-            <AlertCircle className="text-red-500 w-5 h-5" />
-          </div>
-          <h3 className="text-lg font-bold text-ink">Absences</h3>
-          <span className="ml-auto text-sm font-bold bg-red-500/10 text-red-600 px-3 py-1 rounded-full">
-            {absences.length}
-          </span>
-        </div>
-
-        <div className="space-y-3">
-          {absences.length === 0 ? (
-            <p className="text-ink/40 text-center py-8">Aucune absence enregistrée</p>
+      {/* Payment List */}
+      <div className="space-y-3">
+        <AnimatePresence mode="popLayout">
+          {filteredPayments.length === 0 ? (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="card-premium p-16 text-center"
+            >
+              <Receipt size={48} className="mx-auto text-ink/10 mb-4" />
+              <p className="text-ink/40 font-medium">Aucun paiement dans cette catégorie</p>
+            </motion.div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-ink/10">
-                    <th className="text-left py-3 px-4 font-bold text-ink text-sm">Date</th>
-                    <th className="text-left py-3 px-4 font-bold text-ink text-sm">Description</th>
-                    <th className="text-right py-3 px-4 font-bold text-ink text-sm">Montant</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {absences.map(a => (
-                    <motion.tr
-                      key={a.id}
-                      whileHover={{ backgroundColor: 'rgba(239, 68, 68, 0.02)' }}
-                      className="border-b border-ink/5 transition-colors"
-                    >
-                      <td className="py-4 px-4 text-ink text-sm">
-                        {new Date(a.date).toLocaleDateString('fr-FR')}
-                      </td>
-                      <td className="py-4 px-4 text-ink/60 text-sm">{a.description || '-'}</td>
-                      <td className="py-4 px-4 text-right font-bold text-red-600">
-                        -{formatCurrency(a.amount)}
-                      </td>
-                    </motion.tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            filteredPayments.map((payment, idx) => {
+              const cfg = typeConfig[payment.type] || typeConfig.salary;
+              const Icon = cfg.icon;
+              const reservations = parseReservationDetails(payment.reservation_details);
+              const isExpanded = expandedId === payment.id;
+              const hasDetails = reservations.length > 0;
+
+              return (
+                <motion.div
+                  key={payment.id}
+                  layout
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ delay: idx * 0.04 }}
+                  className={`card-premium overflow-hidden border ${cfg.border} transition-all duration-300`}
+                >
+                  {/* Main Row */}
+                  <button
+                    onClick={() => hasDetails && setExpandedId(isExpanded ? null : payment.id)}
+                    className={`w-full p-5 flex items-center gap-4 text-left transition-colors ${hasDetails ? 'cursor-pointer hover:bg-primary-bg/30' : 'cursor-default'}`}
+                  >
+                    {/* Icon */}
+                    <div className={`w-12 h-12 rounded-2xl ${cfg.bg} flex items-center justify-center flex-shrink-0`}>
+                      <Icon size={20} className={cfg.text} />
+                    </div>
+
+                    {/* Info */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h4 className="font-bold text-ink">{cfg.label}</h4>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${cfg.badge}`}>
+                          {payment.status === 'paid' ? 'PAYÉ' : 'NON PAYÉ'}
+                        </span>
+                      </div>
+                      {payment.description && (
+                        <p className="text-xs text-ink/50 mt-0.5 font-medium truncate max-w-md">{payment.description}</p>
+                      )}
+                      <div className="flex items-center gap-1.5 text-xs text-ink/40 mt-1">
+                        <Calendar size={11} />
+                        <span>{formatDate(payment.date)}</span>
+                        {hasDetails && (
+                          <>
+                            <span className="text-ink/20">•</span>
+                            <Users size={11} />
+                            <span>{reservations.length} réservation{reservations.length > 1 ? 's' : ''}</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Amount + expand */}
+                    <div className="flex items-center gap-3 flex-shrink-0">
+                      <p className={`font-serif font-bold text-xl ${cfg.text}`}>
+                        {payment.type === 'absence' ? '-' : '+'}{formatCurrency(payment.amount)}
+                      </p>
+                      {hasDetails && (
+                        <div className={`w-8 h-8 rounded-xl ${cfg.bg} flex items-center justify-center transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`}>
+                          <ChevronDown size={16} className={cfg.text} />
+                        </div>
+                      )}
+                    </div>
+                  </button>
+
+                  {/* Expanded Reservation Details */}
+                  <AnimatePresence>
+                    {isExpanded && hasDetails && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.25, ease: 'easeInOut' }}
+                        className="overflow-hidden"
+                      >
+                        <div className={`border-t ${cfg.border} ${cfg.bg} px-5 py-4`}>
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-ink/40 mb-3">Réservations incluses</p>
+                          <div className="space-y-2">
+                            {reservations.map((res, i) => (
+                              <div key={i} className="flex items-center justify-between p-3 bg-white/70 rounded-xl border border-white/80 shadow-sm">
+                                <div className="flex items-center gap-3">
+                                  <div className={`w-7 h-7 rounded-full ${cfg.bg} border ${cfg.border} flex items-center justify-center`}>
+                                    <span className={`text-xs font-bold ${cfg.text}`}>{i + 1}</span>
+                                  </div>
+                                  <div>
+                                    <p className="text-sm font-bold text-ink">{res.clientName}</p>
+                                    <div className="flex items-center gap-2 text-[11px] text-ink/50 mt-0.5">
+                                      {res.clientPhone && <span>{res.clientPhone}</span>}
+                                      {res.clientPhone && <span>•</span>}
+                                      <span>{new Date(res.date).toLocaleDateString('fr-FR')}</span>
+                                      {res.percentage && (
+                                        <>
+                                          <span>•</span>
+                                          <span className={`font-bold ${cfg.text}`}>{res.percentage}%</span>
+                                        </>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                                <p className={`font-serif font-bold text-sm ${cfg.text}`}>
+                                  {formatCurrency(res.amount)}
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+                          {/* Total row */}
+                          <div className={`mt-3 flex justify-between items-center px-3 py-2 rounded-xl border ${cfg.border} bg-white/40`}>
+                            <span className="text-xs font-bold text-ink/50 uppercase tracking-wider">Total réservations</span>
+                            <span className={`font-serif font-bold ${cfg.text}`}>
+                              {formatCurrency(reservations.reduce((s, r) => s + r.amount, 0))}
+                            </span>
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </motion.div>
+              );
+            })
           )}
-        </div>
-      </motion.div>
+        </AnimatePresence>
+      </div>
     </div>
   );
 };

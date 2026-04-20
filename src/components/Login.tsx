@@ -48,29 +48,36 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
     setIsLoading(true);
 
     try {
+      console.log('[LOGIN] Starting login process...');
       const { data, error: authError } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
       if (authError) {
+        console.error('[LOGIN] ❌ Authentication error:', authError.message);
         setError(authError.message);
         setIsLoading(false);
         return;
       }
 
       if (data.user) {
+        console.log('[LOGIN] ✅ Authentication successful. User ID:', data.user.id);
         try {
-          // Wait a moment and fetch profile
+          // Wait a moment for database to sync
           await new Promise(resolve => setTimeout(resolve, 500));
+          console.log('[LOGIN] Fetching user profile...');
           const profileData = await fetchUserProfile(data.user.id);
 
           if (!profileData) {
+            console.error('[LOGIN] ❌ Profile not found');
             setError('Profile not found. Please try signing up again.');
             setIsLoading(false);
             return;
           }
 
+          console.log('[LOGIN] ✅ Profile loaded. Role:', profileData.role, 'Username:', profileData.username);
+          
           onLogin({
             id: data.user.id,
             username: profileData.username,
@@ -83,11 +90,20 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
             createdAt: profileData.created_at,
           });
         } catch (profileErr: any) {
-          setError(profileErr.message || 'Failed to load profile');
+          console.error('[LOGIN] ❌ Profile fetch failed:', profileErr);
+          const errorMsg = profileErr.message || 'Failed to load profile';
+          
+          // Check if it's an RLS policy error
+          if (errorMsg.includes('row-level security') || errorMsg.includes('policy')) {
+            setError('Database permission error. Please contact your administrator. (RLS Policy Issue)');
+          } else {
+            setError(errorMsg);
+          }
           setIsLoading(false);
         }
       }
     } catch (err: any) {
+      console.error('[LOGIN] ❌ Unexpected error:', err);
       setError(err.message || 'Login failed');
     } finally {
       setIsLoading(false);

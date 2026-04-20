@@ -15,20 +15,21 @@ export interface User {
   percentage?: number;
   dailyRate?: number;
   monthlyRate?: number;
-  hireDate: string;
+  hireDate?: string;
+  createdAt?: string;
 }
 
 export interface Prestation {
   id: string;
   name: string;
-  description: string;
+  description?: string;
   price: number;
 }
 
 export interface Service {
   id: string;
   name: string;
-  description: string;
+  description?: string;
   price: number;
 }
 
@@ -38,15 +39,17 @@ export interface Reservation {
   clientName: string;
   clientPhone: string;
   prestationId: string;
+  prestationName?: string;
   serviceIds: string[];
   date: string;
   time: string;
   totalPrice: number;
   paidAmount: number;
-  status: 'pending' | 'finalized' | 'cancelled';
+  status: 'pending' | 'finalized' | 'cancelled' | 'completed';
   workerId?: string;
   createdBy: string;
   finalizedAt?: string;
+  finalized_by?: string;
 }
 
 export interface Supplier {
@@ -82,6 +85,7 @@ export interface EmployeePayment {
   date: string;
   status?: 'paid' | 'unpaid'; // Track payment status
   paid?: boolean; // Legacy field for backwards compatibility
+  reservation_details?: string; // JSON string containing reservation details for journalier payments
 }
 
 export interface StoreConfig {

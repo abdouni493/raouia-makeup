@@ -49,6 +49,21 @@ const Employees: React.FC = () => {
     works: [],
     payments: []
   });
+
+  const [selectedPaymentDetails, setSelectedPaymentDetails] = useState<{
+    isOpen: boolean;
+    payment: EmployeePayment | null;
+    reservations: Array<{
+      clientName: string;
+      date: string;
+      amount: number;
+      percentage?: number;
+    }>;
+  }>({
+    isOpen: false,
+    payment: null,
+    reservations: []
+  });
   
   const [paymentModal, setPaymentModal] = useState<{ isOpen: boolean; employee: Employee | null; type: 'acompte' | 'absence' | 'payment' }>({
     isOpen: false,
@@ -85,6 +100,45 @@ const Employees: React.FC = () => {
   const [dateRangeOverride, setDateRangeOverride] = useState({
     lastPaymentDate: '',
     currentDate: new Date().toISOString().split('T')[0]
+  });
+
+  // Journalier payment interface state
+  const [journalierPaymentMode, setJournalierPaymentMode] = useState<{
+    isActive: boolean;
+    selectedReservationIds: string[];
+    searchTerm: string;
+    searchResults: Array<{
+      reservationId: string;
+      reservationWorkerId: string;
+      clientName: string;
+      clientPhone: string;
+      date: string;
+      amount: number;
+      paymentStatus: 'paid' | 'unpaid';
+    }>;
+    workerReservations: Array<{
+      reservationId: string;
+      reservationWorkerId: string;
+      clientName: string;
+      clientPhone: string;
+      date: string;
+      amount: number;
+      paymentStatus: 'paid' | 'unpaid';
+    }>;
+    totalAmount: number;
+    paymentAmount: string;
+    paymentPercentage: string;
+    usePercentage: boolean;
+  }>({
+    isActive: false,
+    selectedReservationIds: [],
+    searchTerm: '',
+    searchResults: [],
+    workerReservations: [],
+    totalAmount: 0,
+    paymentAmount: '',
+    paymentPercentage: '',
+    usePercentage: false,
   });
 
   // Helper function to format date without timezone conversion
@@ -182,7 +236,8 @@ const Employees: React.FC = () => {
         type: p.type,
         description: p.description,
         date: p.date,
-        status: p.status || 'unpaid' // Include status field from database
+        status: p.status || 'unpaid',
+        reservation_details: p.reservation_details ? JSON.stringify(p.reservation_details) : undefined
       }));
       setPayments(mappedPayments);
     }
@@ -254,16 +309,8 @@ const Employees: React.FC = () => {
     }
 
     // Validate payment amount is provided
-    if (formData.paymentType === 'days' && !formData.dailyRate) {
-      alert('Veuillez entrer le salaire journalier');
-      return;
-    }
     if (formData.paymentType === 'month' && !formData.monthlyRate) {
       alert('Veuillez entrer le salaire mensuel');
-      return;
-    }
-    if (formData.paymentType === 'percentage' && !formData.percentage) {
-      alert('Veuillez entrer le pourcentage');
       return;
     }
 
@@ -273,6 +320,7 @@ const Employees: React.FC = () => {
       role: formData.role,
       phone: formData.phone,
       address: formData.address,
+      email: formData.email || null,
       payment_type: formData.paymentType,
       percentage: formData.paymentType === 'percentage' ? Number(formData.percentage) : null,
       daily_rate: formData.paymentType === 'days' ? Number(formData.dailyRate) : null,
@@ -296,7 +344,7 @@ const Employees: React.FC = () => {
         fetchData();
       }
     } else {
-      // For adding a new employee - create auth user ONLY (without auto-login)
+      // For adding a new employee - create auth user directly
       try {
         // Save current admin session before creating worker account
         const { data: { session: currentSession } } = await supabase.auth.getSession();
@@ -309,13 +357,17 @@ const Employees: React.FC = () => {
 
         console.log('[CREATE WORKER] Current admin user:', currentUser.id);
 
-        // Create auth user via signup (available with anon key)
+        // Create auth user via signUp API (will require email confirmation by default)
+        // But Supabase email confirmation can be disabled in project settings
         const { data: authData, error: authError } = await supabase.auth.signUp({
           email: formData.email.toLowerCase().trim(),
           password: formData.password,
           options: {
-            emailRedirectTo: window.location.origin,
-            data: { username: formData.username, full_name: formData.fullName }
+            data: { 
+              username: formData.username, 
+              full_name: formData.fullName 
+            },
+            emailRedirectTo: `${window.location.origin}/login`
           }
         });
 
@@ -323,9 +375,9 @@ const Employees: React.FC = () => {
           console.error('Error creating auth user:', authError);
           
           // Handle specific error messages
-          if (authError.message.includes('already registered') || authError.message.includes('User already')) {
+          if (authError.message?.includes('already registered') || authError.message?.includes('already exists')) {
             alert('Erreur: Cet email est déjà utilisé. Veuillez utiliser un email différent.');
-          } else if (authError.message.includes('Invalid email')) {
+          } else if (authError.message?.includes('Invalid email')) {
             alert('Erreur: Format d\'email invalide. Veuillez vérifier votre email.');
           } else {
             alert('Erreur lors de la création du compte: ' + authError.message);
@@ -334,6 +386,7 @@ const Employees: React.FC = () => {
         }
 
         if (!authData?.user?.id) {
+          console.error('Auth response:', authData);
           alert('Erreur: Impossible de créer le compte');
           return;
         }
@@ -352,12 +405,6 @@ const Employees: React.FC = () => {
         if (profileError) {
           console.error('Error creating profile:', profileError);
           alert('Erreur lors de la création du profil: ' + profileError.message);
-          // Try to delete the auth user we just created since profile creation failed
-          try {
-            await supabase.auth.admin.deleteUser(authData.user.id);
-          } catch (deleteError) {
-            console.error('Could not delete orphaned auth user:', deleteError);
-          }
           return;
         }
 
@@ -374,6 +421,7 @@ const Employees: React.FC = () => {
         setIsModalOpen(false);
         resetForm();
         fetchData();
+        alert('Employé créé avec succès! L\'employé peut maintenant se connecter avec son email et mot de passe.');
         
       } catch (error: any) {
         console.error('Error creating employee:', error);
@@ -405,13 +453,13 @@ const Employees: React.FC = () => {
       fullName: emp.fullName,
       phone: emp.phone || '',
       address: emp.address || '',
-      role: emp.role,
+      role: (emp.role === 'admin' ? 'admin' : 'worker') as 'admin' | 'worker',
       paymentType: emp.paymentType || 'month',
       percentage: emp.percentage?.toString() || '',
       dailyRate: emp.dailyRate?.toString() || '',
       monthlyRate: emp.monthlyRate?.toString() || '',
       username: emp.username,
-      email: '',
+      email: emp.email || '',
       password: '',
       hireDate: emp.hireDate || '',
     });
@@ -430,57 +478,100 @@ const Employees: React.FC = () => {
       const employeePayments = payments.filter(p => p.employeeId === emp.id)
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-      // Set history data with existing employee earnings
-      const works = reservationWorkerEarnings
-        .filter(rw => rw.workerId === emp.id)
-        .map(rw => ({
-          id: rw.reservationId,
-          name: `Réservation #${rw.reservationId.substring(0, 8)}`,
-          date: new Date().toISOString().split('T')[0],
-          status: 'completed',
-          price: rw.amount || 0,
-          paidAmount: 0,
-          paymentType: '',
-          percentage: 0,
-          reservationWorkerStatus: rw.status
-        }));
-
-      setHistoryData({
-        works,
-        payments: employeePayments
-      });
-
-      // Fetch detailed reservation info in background if needed
-      if (reservationWorkerEarnings.filter(rw => rw.workerId === emp.id).length > 0) {
-        supabase
+      if (emp.paymentType === 'days') {
+        // For journalier workers: fetch all paid and unpaid reservations from reservation_workers
+        const { data: journalierData, error: journalierError } = await supabase
           .from('reservation_workers')
           .select(`
+            id,
             reservation_id,
             worker_id,
             amount,
+            percentage,
             status,
-            reservations(client_name, date)
+            reservations(
+              id,
+              client_name,
+              date,
+              total_price,
+              paid_amount
+            )
           `)
           .eq('worker_id', emp.id)
-          .then(({ data: workerReservationsData, error: workerReservationsError }) => {
-            if (!workerReservationsError && workerReservationsData) {
-              const detailedWorks = workerReservationsData.map((wr: any) => ({
-                id: wr.reservation_id,
-                name: wr.reservations?.client_name || 'Client',
-                date: wr.reservations?.date || new Date().toISOString().split('T')[0],
-                status: 'completed',
-                price: wr.amount || 0,
-                paidAmount: 0,
-                paymentType: '',
-                percentage: 0,
-                reservationWorkerStatus: wr.status
-              }));
-              setHistoryData(prev => ({
-                ...prev,
-                works: detailedWorks
-              }));
-            }
+          .eq('payment_type', 'days')
+          .order('created_at', { ascending: false });
+
+        if (!journalierError && journalierData) {
+          const works = journalierData.map((wr: any) => ({
+            id: wr.reservation_id,
+            name: wr.reservations?.client_name || 'Client',
+            date: wr.reservations?.date || new Date().toISOString().split('T')[0],
+            status: 'completed',
+            price: wr.amount || 0,
+            paidAmount: wr.reservations?.paid_amount || 0,
+            paymentType: 'days',
+            percentage: 0,
+            reservationWorkerStatus: wr.status
+          }));
+
+          setHistoryData({
+            works,
+            payments: employeePayments
           });
+        }
+      } else {
+        // For other payment types: use existing reservation_worker_earnings
+        const works = reservationWorkerEarnings
+          .filter(rw => rw.workerId === emp.id)
+          .map(rw => ({
+            id: rw.reservationId,
+            name: `Réservation #${rw.reservationId.substring(0, 8)}`,
+            date: new Date().toISOString().split('T')[0],
+            status: 'completed',
+            price: rw.amount || 0,
+            paidAmount: 0,
+            paymentType: '',
+            percentage: 0,
+            reservationWorkerStatus: rw.status
+          }));
+
+        setHistoryData({
+          works,
+          payments: employeePayments
+        });
+
+        // Fetch detailed reservation info in background
+        if (reservationWorkerEarnings.filter(rw => rw.workerId === emp.id).length > 0) {
+          supabase
+            .from('reservation_workers')
+            .select(`
+              reservation_id,
+              worker_id,
+              amount,
+              status,
+              reservations(client_name, date)
+            `)
+            .eq('worker_id', emp.id)
+            .then(({ data: workerReservationsData, error: workerReservationsError }) => {
+              if (!workerReservationsError && workerReservationsData) {
+                const detailedWorks = workerReservationsData.map((wr: any) => ({
+                  id: wr.reservation_id,
+                  name: wr.reservations?.client_name || 'Client',
+                  date: wr.reservations?.date || new Date().toISOString().split('T')[0],
+                  status: 'completed',
+                  price: wr.amount || 0,
+                  paidAmount: 0,
+                  paymentType: '',
+                  percentage: 0,
+                  reservationWorkerStatus: wr.status
+                }));
+                setHistoryData(prev => ({
+                  ...prev,
+                  works: detailedWorks
+                }));
+              }
+            });
+        }
       }
     } catch (error) {
       console.error('Error opening history modal:', error);
@@ -809,7 +900,7 @@ const Employees: React.FC = () => {
       // Update payments locally for better performance
       const updatedPayments = payments.map(p => {
         if (unpaidDeductions.some(d => d.id === p.id)) {
-          return { ...p, status: 'paid' };
+          return { ...p, status: 'paid' as const };
         }
         return p;
       });
@@ -864,6 +955,365 @@ const Employees: React.FC = () => {
     } catch (error) {
       console.error('Error:', error);
       alert('Une erreur s\'est produite');
+    }
+  };
+
+  // ===== JOURNALIER PAYMENT FUNCTIONS =====
+  const loadJournalierReservations = async (workerId: string) => {
+    try {
+      console.log('Loading journalier reservations for worker:', workerId);
+      
+      // Query reservation_workers entries for this worker with status='unpaid' only
+      const { data: existingData, error: existingError } = await supabase
+        .from('reservation_workers')
+        .select(`
+          id,
+          reservation_id,
+          payment_type,
+          status,
+          reservations (
+            id,
+            client_name,
+            client_phone,
+            date,
+            total_price,
+            status,
+            finalized_by,
+            paid_amount
+          )
+        `)
+        .eq('worker_id', workerId)
+        .eq('payment_type', 'days')
+        .eq('status', 'unpaid');
+
+      if (existingError) throw existingError;
+
+      // Get all reservation_ids already tracked in reservation_workers (paid or unpaid)
+      const { data: allRwData, error: allRwError } = await supabase
+        .from('reservation_workers')
+        .select('reservation_id, status')
+        .eq('worker_id', workerId)
+        .eq('payment_type', 'days');
+
+      if (allRwError) throw allRwError;
+
+      // IDs that are already in reservation_workers (any status)
+      const trackedReservationIds = new Set((allRwData || []).map((rw: any) => rw.reservation_id));
+      // IDs that are paid
+      const paidReservationIds = new Set(
+        (allRwData || []).filter((rw: any) => rw.status === 'paid').map((rw: any) => rw.reservation_id)
+      );
+
+      // Completed reservations finalized by this worker not yet in reservation_workers
+      const { data: completedData, error: completedError } = await supabase
+        .from('reservations')
+        .select('*')
+        .eq('finalized_by', workerId)
+        .eq('status', 'completed');
+
+      if (completedError) throw completedError;
+
+      console.log('Unpaid reservation_workers entries:', existingData);
+      console.log('Completed reservations finalized by worker:', completedData);
+
+      // Process unpaid reservation_workers entries
+      const fromReservationWorkers = (existingData || []).map((rw: any) => ({
+        reservationId: rw.reservation_id,
+        reservationWorkerId: rw.id,
+        clientName: rw.reservations?.client_name || '',
+        clientPhone: rw.reservations?.client_phone || '',
+        date: rw.reservations?.date || '',
+        amount: rw.reservations?.total_price || 0,
+        paymentStatus: 'unpaid' as const,
+      })).filter(r => r.reservationId);
+
+      // Reservations not yet tracked at all (not in reservation_workers)
+      const fromCompleted = (completedData || [])
+        .filter((res: any) => !trackedReservationIds.has(res.id)) // Only those not tracked yet
+        .map((res: any) => ({
+          reservationId: res.id,
+          reservationWorkerId: null,
+          clientName: res.client_name || '',
+          clientPhone: res.client_phone || '',
+          date: res.date || '',
+          amount: res.total_price || 0,
+          paymentStatus: 'unpaid' as const,
+        }));
+
+      const allReservations = [...fromReservationWorkers, ...fromCompleted];
+
+      console.log('Processed unpaid journalier reservations:', allReservations);
+
+      setJournalierPaymentMode(prev => ({
+        ...prev,
+        isActive: true,
+        workerReservations: allReservations,
+        searchResults: [],
+        selectedReservationIds: [],
+        totalAmount: 0,
+        paymentAmount: '',
+        paymentPercentage: '',
+        usePercentage: false,
+      }));
+    } catch (error) {
+      console.error('Error loading journalier reservations:', error);
+      alert('Erreur lors du chargement des réservations');
+    }
+  };
+
+  const searchJournalierReservations = async (workerId: string, searchTerm: string) => {
+    try {
+      if (!searchTerm.trim()) {
+        setJournalierPaymentMode(prev => ({
+          ...prev,
+          searchResults: [],
+        }));
+        return;
+      }
+
+      console.log('Searching journalier reservations for:', { workerId, searchTerm });
+
+      const searchLower = searchTerm.toLowerCase();
+
+      // Query both reservation_workers and ALL completed reservations (not just by this worker)
+      // This allows workers to add any completed reservation to their payment list
+      const { data: rwData, error: rwError } = await supabase
+        .from('reservation_workers')
+        .select(`
+          id,
+          reservation_id,
+          payment_type,
+          status,
+          reservations (
+            id,
+            client_name,
+            client_phone,
+            date,
+            total_price,
+            status,
+            finalized_by
+          )
+        `)
+        .eq('worker_id', workerId)
+        .eq('payment_type', 'days')
+        .eq('status', 'unpaid');
+
+      if (rwError) throw rwError;
+
+      // Query ALL completed reservations
+      const { data: completedData, error: completedError } = await supabase
+        .from('reservations')
+        .select('*')
+        .eq('status', 'completed');
+
+      if (completedError) throw completedError;
+
+      // Get all reservation_ids already tracked for this worker in reservation_workers
+      const { data: allRwData } = await supabase
+        .from('reservation_workers')
+        .select('reservation_id, status')
+        .eq('worker_id', workerId)
+        .eq('payment_type', 'days');
+
+      const trackedReservationIds = new Set((allRwData || []).map((rw: any) => rw.reservation_id));
+
+      console.log('All reservation_workers data:', rwData);
+      console.log('All completed reservations:', completedData);
+
+      const matchesSearch = (clientName: string, clientPhone: string) => {
+        return clientName.toLowerCase().includes(searchLower) || 
+               clientPhone.toLowerCase().includes(searchLower);
+      };
+
+      // Process unpaid reservation_workers results - filter by search term
+      const fromReservationWorkers = (rwData || [])
+        .filter((rw: any) => 
+          matchesSearch(
+            rw.reservations?.client_name || '',
+            rw.reservations?.client_phone || ''
+          )
+        )
+        .map((rw: any) => ({
+          reservationId: rw.reservation_id,
+          reservationWorkerId: rw.id,
+          clientName: rw.reservations?.client_name || '',
+          clientPhone: rw.reservations?.client_phone || '',
+          date: rw.reservations?.date || '',
+          amount: rw.reservations?.total_price || 0,
+          paymentStatus: 'unpaid' as const,
+        })).filter(r => r.reservationId);
+
+      // Completed reservations not yet tracked at all
+      const fromCompleted = (completedData || [])
+        .filter((res: any) => !trackedReservationIds.has(res.id)) // Not yet in reservation_workers
+        .filter((res: any) => 
+          matchesSearch(
+            res.client_name || '',
+            res.client_phone || ''
+          )
+        )
+        // Exclude ones already shown in fromReservationWorkers
+        .filter((res: any) => !fromReservationWorkers.find(r => r.reservationId === res.id))
+        .map((res: any) => ({
+          reservationId: res.id,
+          reservationWorkerId: null,
+          clientName: res.client_name || '',
+          clientPhone: res.client_phone || '',
+          date: res.date || '',
+          amount: res.total_price || 0,
+          paymentStatus: 'unpaid' as const,
+        }));
+
+      const allResults = [...fromReservationWorkers, ...fromCompleted];
+
+      console.log('Filtered search results:', allResults);
+
+      setJournalierPaymentMode(prev => ({
+        ...prev,
+        searchResults: allResults,
+      }));
+    } catch (error) {
+      console.error('Error searching reservations:', error);
+      alert('Erreur lors de la recherche');
+    }
+  };
+
+
+  const toggleReservationSelection = (reservationId: string) => {
+    setJournalierPaymentMode(prev => {
+      const isSelected = prev.selectedReservationIds.includes(reservationId);
+      const newSelected = isSelected 
+        ? prev.selectedReservationIds.filter(id => id !== reservationId)
+        : [...prev.selectedReservationIds, reservationId];
+
+      // Calculate total from selected reservations
+      const allReservations = [...prev.workerReservations, ...prev.searchResults];
+      const selectedReservations = allReservations.filter(r => newSelected.includes(r.reservationId));
+      const newTotal = selectedReservations.reduce((sum, r) => sum + r.amount, 0);
+
+      return {
+        ...prev,
+        selectedReservationIds: newSelected,
+        totalAmount: newTotal,
+      };
+    });
+  };
+
+  const calculateJournalierPayment = () => {
+    const { totalAmount, usePercentage, paymentPercentage } = journalierPaymentMode;
+    
+    if (usePercentage && paymentPercentage) {
+      const percentage = parseFloat(paymentPercentage);
+      return (totalAmount * percentage) / 100;
+    }
+    return 0;
+  };
+
+  const saveJournalierPayment = async () => {
+    if (!paymentModal.employee) return;
+    if (journalierPaymentMode.selectedReservationIds.length === 0) {
+      alert('Veuillez sélectionner au moins une réservation');
+      return;
+    }
+
+    const finalAmount = journalierPaymentMode.usePercentage 
+      ? calculateJournalierPayment()
+      : parseFloat(journalierPaymentMode.paymentAmount || '0');
+
+    if (finalAmount <= 0) {
+      alert('Veuillez entrer un montant valide');
+      return;
+    }
+
+    try {
+      const allReservations = [...journalierPaymentMode.workerReservations, ...journalierPaymentMode.searchResults];
+      const selectedReservations = allReservations.filter(r =>
+        journalierPaymentMode.selectedReservationIds.includes(r.reservationId)
+      );
+
+      // 1. Update reservation_workers status to 'paid' for those that already have an entry
+      const reservationWorkerIds = selectedReservations
+        .map(r => r.reservationWorkerId)
+        .filter((id): id is string => id !== null && id !== undefined);
+
+      if (reservationWorkerIds.length > 0) {
+        const { error: updateError } = await supabase
+          .from('reservation_workers')
+          .update({ status: 'paid' })
+          .in('id', reservationWorkerIds);
+
+        if (updateError) throw updateError;
+      }
+
+      // 2. For reservations NOT yet in reservation_workers (reservationWorkerId === null),
+      //    insert new entries with status='paid'
+      const newEntries = selectedReservations.filter(r => r.reservationWorkerId === null);
+      if (newEntries.length > 0) {
+        const insertRows = newEntries.map(r => ({
+          reservation_id: r.reservationId,
+          worker_id: paymentModal.employee!.id,
+          payment_type: 'days',
+          amount: r.amount,
+          percentage: 0,
+          status: 'paid',
+        }));
+
+        const { error: insertError } = await supabase
+          .from('reservation_workers')
+          .insert(insertRows);
+
+        if (insertError) throw insertError;
+      }
+
+      // 3. Build reservation details for history record (include phone from workerReservations)
+      const reservationDetails = selectedReservations.map(r => ({
+        clientName: r.clientName,
+        clientPhone: r.clientPhone,
+        date: r.date,
+        amount: r.amount,
+        percentage: journalierPaymentMode.usePercentage ? parseFloat(journalierPaymentMode.paymentPercentage) : undefined
+      }));
+
+      const description = journalierPaymentMode.usePercentage
+        ? `Paiement journalier - ${selectedReservations.length} réservations (${journalierPaymentMode.paymentPercentage}%)`
+        : `Paiement journalier - ${selectedReservations.length} réservations`;
+
+      // 4. Create employee_payments record
+      const { error: paymentError } = await supabase
+        .from('employee_payments')
+        .insert([{
+          employee_id: paymentModal.employee.id,
+          type: 'salary',
+          amount: finalAmount,
+          description: description,
+          date: new Date().toISOString().split('T')[0],
+          status: 'paid',
+          reservation_details: reservationDetails  // store as jsonb directly
+        }]);
+
+      if (paymentError) throw paymentError;
+
+      alert(`Paiement de ${formatCurrency(finalAmount)} enregistré avec succès`);
+      
+      // Close the payment interface and reset
+      setPaymentModal({ isOpen: false, employee: null, type: 'acompte' });
+      setJournalierPaymentMode({
+        isActive: false,
+        selectedReservationIds: [],
+        searchTerm: '',
+        searchResults: [],
+        workerReservations: [],
+        totalAmount: 0,
+        paymentAmount: '',
+        paymentPercentage: '',
+        usePercentage: false,
+      });
+
+      // Refresh data to reflect all changes
+      fetchData();
+    } catch (error) {
+      console.error('Error saving journalier payment:', error);
+      alert('Erreur lors de l\'enregistrement du paiement');
     }
   };
 
@@ -1066,7 +1516,7 @@ const Employees: React.FC = () => {
                 <span>Rémunération: <span className="text-accent font-bold">{
                   emp.paymentType === 'percentage' ? `${emp.percentage}%` : 
                   emp.paymentType === 'month' ? formatCurrency(emp.monthlyRate || 0) + ' /mois' : 
-                  formatCurrency(emp.dailyRate || 0) + ' /jour'
+                  'Paiement à la journée'
                 }</span></span>
               </div>
             </div>
@@ -1091,7 +1541,18 @@ const Employees: React.FC = () => {
                 <MinusCircle size={16} /> Absence
               </button>
               <button 
-                onClick={() => { setPaymentModal({ isOpen: true, employee: emp, type: 'payment' }); setPaymentFormData({ amount: '', description: '', date: new Date().toISOString().split('T')[0] }); setDateRangeOverride({ lastPaymentDate: '', currentDate: new Date().toISOString().split('T')[0] }); }}
+                onClick={() => {
+                  if (emp.paymentType === 'days') {
+                    // For journalier workers, load their reservations
+                    setPaymentModal({ isOpen: true, employee: emp, type: 'payment' });
+                    loadJournalierReservations(emp.id);
+                  } else {
+                    // For other payment types, use the traditional payment interface
+                    setPaymentModal({ isOpen: true, employee: emp, type: 'payment' });
+                    setPaymentFormData({ amount: '', description: '', date: new Date().toISOString().split('T')[0] });
+                    setDateRangeOverride({ lastPaymentDate: '', currentDate: new Date().toISOString().split('T')[0] });
+                  }
+                }}
                 className="flex flex-col items-center gap-1 p-2 rounded-xl bg-accent text-white hover:bg-accent/90 transition-all text-[10px] font-bold uppercase tracking-wider shadow-lg shadow-accent/20"
               >
                 <DollarSign size={16} /> Paiement
@@ -1156,7 +1617,155 @@ const Employees: React.FC = () => {
                   </div>
                 </div>
 
-                {paymentModal.type === 'payment' ? (
+                {/* JOURNALIER PAYMENT INTERFACE */}
+                {paymentModal.type === 'payment' && paymentModal.employee?.paymentType === 'days' && journalierPaymentMode.isActive && (
+                  <div className="space-y-5">
+                    {/* Unpaid Reservations */}
+                    <div className="p-5 bg-white border border-border rounded-2xl shadow-sm">
+                      <div className="flex items-center gap-2 mb-4">
+                        <div className="w-1 h-6 bg-gradient-to-b from-accent to-accent/60 rounded-full"></div>
+                        <h3 className="text-sm font-bold text-ink uppercase tracking-widest">Réservations non payées</h3>
+                      </div>
+                      <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
+                        {journalierPaymentMode.workerReservations.length === 0 ? (
+                          <div className="p-4 bg-ink/5 rounded-lg text-center">
+                            <p className="text-xs text-ink/40 font-medium">Aucune réservation non payée</p>
+                          </div>
+                        ) : (
+                          journalierPaymentMode.workerReservations.map(reservation => (
+                            <label key={reservation.reservationId} className="flex items-center gap-3 p-3 bg-ink/2 rounded-lg cursor-pointer hover:bg-accent/5 transition-colors border border-transparent hover:border-accent/20">
+                              <input
+                                type="checkbox"
+                                checked={journalierPaymentMode.selectedReservationIds.includes(reservation.reservationId)}
+                                onChange={() => toggleReservationSelection(reservation.reservationId)}
+                                className="w-4 h-4 accent-accent rounded"
+                              />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-bold text-ink truncate">{reservation.clientName}</p>
+                                <p className="text-[10px] text-ink/60 mt-0.5">{reservation.clientPhone} • {new Date(reservation.date).toLocaleDateString('fr-FR')}</p>
+                              </div>
+                              <p className="font-serif font-bold text-accent text-xs whitespace-nowrap">{formatCurrency(reservation.amount)}</p>
+                            </label>
+                          ))
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Search for additional reservations */}
+                    <div className="p-5 bg-white border border-border rounded-2xl shadow-sm">
+                      <div className="flex items-center gap-2 mb-4">
+                        <div className="w-1 h-6 bg-gradient-to-b from-green-500 to-green-500/60 rounded-full"></div>
+                        <h3 className="text-sm font-bold text-ink uppercase tracking-widest">Ajouter d'autres réservations</h3>
+                      </div>
+                      <input
+                        type="text"
+                        placeholder="Rechercher par nom ou téléphone..."
+                        value={journalierPaymentMode.searchTerm}
+                        onChange={(e) => {
+                          setJournalierPaymentMode(prev => ({ ...prev, searchTerm: e.target.value }));
+                          searchJournalierReservations(paymentModal.employee!.id, e.target.value);
+                        }}
+                        className="w-full input-premium text-xs mb-3"
+                      />
+                      <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar">
+                        {journalierPaymentMode.searchResults.length === 0 ? (
+                          journalierPaymentMode.searchTerm && (
+                            <div className="p-4 bg-ink/5 rounded-lg text-center">
+                              <p className="text-xs text-ink/40 font-medium">Aucune réservation trouvée</p>
+                            </div>
+                          )
+                        ) : (
+                          journalierPaymentMode.searchResults.map(reservation => (
+                            <label key={reservation.reservationId} className="flex items-center gap-3 p-3 bg-ink/2 rounded-lg cursor-pointer hover:bg-green-500/5 transition-colors border border-transparent hover:border-green-500/20">
+                              <input
+                                type="checkbox"
+                                checked={journalierPaymentMode.selectedReservationIds.includes(reservation.reservationId)}
+                                onChange={() => toggleReservationSelection(reservation.reservationId)}
+                                className="w-4 h-4 accent-green-500 rounded"
+                              />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-bold text-ink truncate">{reservation.clientName}</p>
+                                <p className="text-[10px] text-ink/60 mt-0.5">{reservation.clientPhone} • {new Date(reservation.date).toLocaleDateString('fr-FR')}</p>
+                              </div>
+                              <p className="font-serif font-bold text-green-600 text-xs whitespace-nowrap">{formatCurrency(reservation.amount)}</p>
+                            </label>
+                          ))
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Total and Payment Options */}
+                    <div className="p-5 bg-white border border-border rounded-2xl shadow-sm">
+                      <div className="flex items-center gap-2 mb-4">
+                        <div className="w-1 h-6 bg-gradient-to-b from-accent to-accent/60 rounded-full"></div>
+                        <h3 className="text-sm font-bold text-ink uppercase tracking-widest">Détails du paiement</h3>
+                      </div>
+                      <div className="space-y-3">
+                        {/* Total */}
+                        <div className="flex justify-between items-center p-3 bg-gradient-to-r from-accent/5 to-transparent rounded-lg border border-accent/20">
+                          <span className="text-sm text-ink/70 font-medium">Total sélectionné</span>
+                          <span className="font-serif font-bold text-lg text-accent">{formatCurrency(journalierPaymentMode.totalAmount)}</span>
+                        </div>
+
+                        {/* Payment type selector */}
+                        <div className="space-y-3 mt-4">
+                          <label className="flex items-center gap-3 p-3 rounded-lg cursor-pointer hover:bg-accent/5 border border-border transition-colors">
+                            <input
+                              type="radio"
+                              checked={!journalierPaymentMode.usePercentage}
+                              onChange={() => setJournalierPaymentMode(prev => ({ ...prev, usePercentage: false }))}
+                              className="w-4 h-4 accent-accent"
+                            />
+                            <span className="text-sm font-medium text-ink">Montant fixe</span>
+                          </label>
+                          {!journalierPaymentMode.usePercentage && (
+                            <input
+                              type="number"
+                              placeholder="Entrez le montant à payer"
+                              value={journalierPaymentMode.paymentAmount}
+                              onChange={(e) => setJournalierPaymentMode(prev => ({ ...prev, paymentAmount: e.target.value }))}
+                              className="w-full input-premium text-xs ml-7"
+                              max={journalierPaymentMode.totalAmount}
+                            />
+                          )}
+                        </div>
+
+                        <div className="space-y-3">
+                          <label className="flex items-center gap-3 p-3 rounded-lg cursor-pointer hover:bg-accent/5 border border-border transition-colors">
+                            <input
+                              type="radio"
+                              checked={journalierPaymentMode.usePercentage}
+                              onChange={() => setJournalierPaymentMode(prev => ({ ...prev, usePercentage: true }))}
+                              className="w-4 h-4 accent-accent"
+                            />
+                            <span className="text-sm font-medium text-ink">Pourcentage</span>
+                          </label>
+                          {journalierPaymentMode.usePercentage && (
+                            <div className="space-y-3 ml-7">
+                              <input
+                                type="number"
+                                placeholder="Entrez le pourcentage (0-100)"
+                                value={journalierPaymentMode.paymentPercentage}
+                                onChange={(e) => setJournalierPaymentMode(prev => ({ ...prev, paymentPercentage: e.target.value }))}
+                                className="w-full input-premium text-xs"
+                                min="0"
+                                max="100"
+                              />
+                              {journalierPaymentMode.paymentPercentage && (
+                                <div className="flex justify-between items-center p-3 bg-gradient-to-r from-green-500/5 to-transparent rounded-lg border border-green-500/20">
+                                  <span className="text-sm text-ink/70 font-medium">Montant à payer ({journalierPaymentMode.paymentPercentage}%)</span>
+                                  <span className="font-serif font-bold text-lg text-green-600">{formatCurrency(calculateJournalierPayment())}</span>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {paymentModal.type === 'payment' && !(paymentModal.employee?.paymentType === 'days' && journalierPaymentMode.isActive) ? (
                   <div className="space-y-5">
                     {(() => {
                       const employee = paymentModal.employee!;
@@ -1418,6 +2027,35 @@ const Employees: React.FC = () => {
                       );
                     })()}
                   </div>
+                ) : paymentModal.type === 'payment' && paymentModal.employee?.paymentType === 'days' && journalierPaymentMode.isActive ? (
+                  <div className="flex gap-4 pt-8">
+                    <button 
+                      onClick={() => {
+                        setPaymentModal({ isOpen: false, employee: null, type: 'acompte' });
+                        setJournalierPaymentMode({
+                          isActive: false,
+                          selectedReservationIds: [],
+                          searchTerm: '',
+                          searchResults: [],
+                          workerReservations: [],
+                          totalAmount: 0,
+                          paymentAmount: '',
+                          paymentPercentage: '',
+                          usePercentage: false,
+                        });
+                      }}
+                      className="flex-1 py-4 rounded-2xl bg-white border border-border font-bold text-ink/40 hover:text-ink transition-all"
+                    >
+                      Annuler
+                    </button>
+                    <button 
+                      onClick={saveJournalierPayment}
+                      disabled={journalierPaymentMode.selectedReservationIds.length === 0 || (!journalierPaymentMode.paymentAmount && !journalierPaymentMode.paymentPercentage)}
+                      className="flex-1 btn-gradient shimmer py-4 rounded-2xl font-bold disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                      <Check size={20} /> Enregistrer le Paiement
+                    </button>
+                  </div>
                 ) : (
                   <div className="space-y-6">
                     <div className="space-y-2">
@@ -1552,36 +2190,8 @@ const Employees: React.FC = () => {
                     >
                       <option value="month">Mensuel</option>
                       <option value="days">Journalier</option>
-                      <option value="percentage">Pourcentage</option>
                     </select>
                   </div>
-                  {formData.paymentType === 'percentage' && (
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-bold uppercase tracking-widest text-ink/30 ml-1">Pourcentage (%)</label>
-                      <input 
-                        type="number" 
-                        value={formData.percentage}
-                        onChange={e => setFormData({...formData, percentage: e.target.value})}
-                        className="w-full input-premium" 
-                        placeholder="Ex: 30"
-                      />
-                    </div>
-                  )}
-                  {formData.paymentType === 'days' && (
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-bold uppercase tracking-widest text-ink/30 ml-1">Salaire Journalier (DA)</label>
-                      <div className="relative">
-                        <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 text-ink/20" size={18} />
-                        <input 
-                          type="number" 
-                          value={formData.dailyRate}
-                          onChange={e => setFormData({...formData, dailyRate: e.target.value})}
-                          className="w-full input-premium pl-12" 
-                          placeholder="Ex: 3000"
-                        />
-                      </div>
-                    </div>
-                  )}
                   {formData.paymentType === 'month' && (
                     <div className="space-y-2">
                       <label className="text-[10px] font-bold uppercase tracking-widest text-ink/30 ml-1">Salaire Mensuel (DA)</label>
@@ -1785,6 +2395,42 @@ const Employees: React.FC = () => {
                     </div>
                   </div>
 
+                  {/* Totals Summary for Journalier Workers */}
+                  {historyModal.employee.paymentType === 'days' && historyData.works.length > 0 && (
+                    <div className="p-6 bg-gradient-to-r from-accent/15 to-amber-50 rounded-2xl border border-accent/30">
+                      <h4 className="font-serif font-bold text-ink mb-4 text-lg flex items-center gap-2">
+                        <div className="w-1 h-1 rounded-full bg-accent"></div>
+                        Résumé des Paiements Journaliers
+                      </h4>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div className="p-3 bg-white rounded-xl border border-accent/20">
+                          <p className="text-xs text-ink/40 font-bold uppercase tracking-widest mb-1">Total Payé</p>
+                          <p className="text-lg md:text-xl font-serif font-bold text-green-600">
+                            {formatCurrency(historyData.works.filter(w => w.reservationWorkerStatus === 'paid').reduce((sum, w) => sum + (w.price || 0), 0))}
+                          </p>
+                        </div>
+                        <div className="p-3 bg-white rounded-xl border border-accent/20">
+                          <p className="text-xs text-ink/40 font-bold uppercase tracking-widest mb-1">Total Non Payé</p>
+                          <p className="text-lg md:text-xl font-serif font-bold text-orange-600">
+                            {formatCurrency(historyData.works.filter(w => w.reservationWorkerStatus === 'unpaid').reduce((sum, w) => sum + (w.price || 0), 0))}
+                          </p>
+                        </div>
+                        <div className="p-3 bg-white rounded-xl border border-accent/20">
+                          <p className="text-xs text-ink/40 font-bold uppercase tracking-widest mb-1">Travaux Payés</p>
+                          <p className="text-lg md:text-xl font-serif font-bold text-green-600">
+                            {historyData.works.filter(w => w.reservationWorkerStatus === 'paid').length}
+                          </p>
+                        </div>
+                        <div className="p-3 bg-white rounded-xl border border-accent/20">
+                          <p className="text-xs text-ink/40 font-bold uppercase tracking-widest mb-1">Travaux Non Payés</p>
+                          <p className="text-lg md:text-xl font-serif font-bold text-orange-600">
+                            {historyData.works.filter(w => w.reservationWorkerStatus === 'unpaid').length}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Tabs or sections */}
                   <div className="space-y-6">
                     {/* Works Section */}
@@ -1938,40 +2584,62 @@ const Employees: React.FC = () => {
                       {historyData.payments.filter(p => p.type === 'salary').length > 0 ? (
                         <div className="space-y-3">
                           {historyData.payments.filter(p => p.type === 'salary').map((payment) => (
-                            <div key={payment.id} className="p-4 bg-green-50 rounded-xl border border-green-100 hover:border-green-300 transition-all">
+                            <motion.button
+                              key={payment.id}
+                              onClick={() => {
+                                try {
+                                  let reservationDetails: any[] = [];
+                                  if (payment.reservation_details) {
+                                    const raw = payment.reservation_details;
+                                    // Handle both JSON string and already-parsed array
+                                    if (typeof raw === 'string') {
+                                      reservationDetails = JSON.parse(raw);
+                                    } else if (Array.isArray(raw)) {
+                                      reservationDetails = raw;
+                                    } else {
+                                      // It may be a stringified object stored as jsonb
+                                      reservationDetails = JSON.parse(JSON.stringify(raw));
+                                    }
+                                  }
+                                  setSelectedPaymentDetails({
+                                    isOpen: true,
+                                    payment: payment,
+                                    reservations: reservationDetails
+                                  });
+                                } catch (e) {
+                                  console.error('Error parsing reservation_details:', e);
+                                  setSelectedPaymentDetails({
+                                    isOpen: true,
+                                    payment: payment,
+                                    reservations: []
+                                  });
+                                }
+                              }}
+                              whileHover={{ scale: 1.02 }}
+                              whileTap={{ scale: 0.98 }}
+                              className="w-full text-left p-4 bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl border border-green-200 hover:border-green-400 hover:shadow-md transition-all cursor-pointer"
+                            >
                               <div className="flex justify-between items-start gap-4">
                                 <div className="flex-1">
                                   <div className="flex items-center gap-2 mb-1">
                                     <h5 className="font-bold text-green-900">Paiement de Salaire</h5>
-                                    <span className="inline-block text-xs font-bold px-2 py-1 rounded-md bg-green-50 text-green-600">
+                                    <span className="inline-block text-xs font-bold px-2 py-1 rounded-md bg-green-100 text-green-700">
                                       PAYÉ
                                     </span>
                                   </div>
                                   {payment.description && (
-                                    <p className="text-xs text-green-600/60">{payment.description}</p>
+                                    <p className="text-xs text-green-700 font-medium mt-1">{payment.description}</p>
                                   )}
-                                  {historyModal.employee?.paymentType === 'days' && payment.description?.includes('journalier') && (
-                                    <div className="mt-2 p-2 bg-white rounded border border-green-200">
-                                      <p className="text-xs text-green-700 font-medium">
-                                        📅 {payment.description.split('(')[1]?.split(')')[0] || 'Détails disponibles'}
-                                      </p>
-                                    </div>
-                                  )}
-                                  <p className="text-xs text-green-600/40 mt-2">
-                                    Payé le: {new Date(payment.date).toLocaleDateString('fr-FR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                                  <p className="text-xs text-green-600/60 mt-2">
+                                    Payé le: {new Date(payment.date).toLocaleDateString('fr-FR', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}
                                   </p>
                                 </div>
                                 <div className="text-right flex flex-col items-end gap-2">
-                                  <p className="text-lg font-bold text-green-600">+{formatCurrency(payment.amount)}</p>
-                                  <button
-                                    onClick={() => handleDeletePayment(payment.id)}
-                                    className="p-1.5 rounded-lg bg-red-50 text-red-400 hover:bg-red-500 hover:text-white transition-all text-xs"
-                                  >
-                                    <Trash2 size={14} />
-                                  </button>
+                                  <p className="text-lg font-serif font-bold text-green-700">+{formatCurrency(payment.amount)}</p>
+                                  <div className="text-xs text-green-600/40 font-medium cursor-pointer hover:text-green-700">Détails →</div>
                                 </div>
                               </div>
-                            </div>
+                            </motion.button>
                           ))}
                         </div>
                       ) : (
@@ -2041,6 +2709,124 @@ const Employees: React.FC = () => {
               <div className="sticky bottom-0 bg-white border-t border-border p-5 md:p-8 flex gap-4">
                 <button 
                   onClick={() => setHistoryModal({ isOpen: false, employee: null })}
+                  className="flex-1 py-3 rounded-xl bg-primary-bg text-ink/60 font-bold hover:bg-accent/10 transition-all"
+                >
+                  Fermer
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Payment Details Modal */}
+      <AnimatePresence mode="wait">
+        {selectedPaymentDetails.isOpen && selectedPaymentDetails.payment && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setSelectedPaymentDetails({ isOpen: false, payment: null, reservations: [] })}
+              className="fixed inset-0 bg-ink/60 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-2xl bg-white rounded-[24px] md:rounded-[32px] shadow-2xl overflow-hidden max-h-[90vh] flex flex-col mx-auto"
+            >
+              <div className="sticky top-0 bg-gradient-to-r from-green-500/10 to-green-400/5 border-b border-border p-5 md:p-8 flex justify-between items-center z-10">
+                <div>
+                  <h3 className="text-xl md:text-2xl font-serif font-bold text-ink tracking-tight">
+                    Détails du Paiement
+                  </h3>
+                  <p className="text-sm text-ink/40 mt-1">{selectedPaymentDetails.payment.description}</p>
+                </div>
+                <button 
+                  onClick={() => setSelectedPaymentDetails({ isOpen: false, payment: null, reservations: [] })} 
+                  className="p-2 rounded-xl hover:bg-primary-bg text-ink/20 hover:text-ink transition-all"
+                >
+                  <X size={24} />
+                </button>
+              </div>
+
+              <div className="overflow-y-auto custom-scrollbar flex-1">
+                <div className="p-5 md:p-8 space-y-6">
+                  
+                  {/* Payment Summary */}
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                    <div className="p-4 bg-green-50 rounded-2xl border border-green-100">
+                      <p className="text-xs font-bold uppercase tracking-widest text-green-600 mb-2">Montant Total</p>
+                      <p className="text-2xl font-serif font-bold text-green-700">
+                        {formatCurrency(selectedPaymentDetails.payment.amount)}
+                      </p>
+                    </div>
+                    <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100">
+                      <p className="text-xs font-bold uppercase tracking-widest text-blue-600 mb-2">Date de Paiement</p>
+                      <p className="text-lg font-bold text-blue-700">
+                        {new Date(selectedPaymentDetails.payment.date).toLocaleDateString('fr-FR', { year: 'numeric', month: 'long', day: 'numeric' })}
+                      </p>
+                    </div>
+                    <div className="p-4 bg-accent/10 rounded-2xl border border-accent/30">
+                      <p className="text-xs font-bold uppercase tracking-widest text-accent mb-2">Réservations</p>
+                      <p className="text-lg font-bold text-accent">
+                        {selectedPaymentDetails.reservations.length}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Reservations List */}
+                  {selectedPaymentDetails.reservations.length > 0 ? (
+                    <div>
+                      <h4 className="text-lg font-bold text-ink mb-4">Réservations Incluses</h4>
+                      <div className="space-y-3">
+                        {selectedPaymentDetails.reservations.map((res, index) => (
+                          <div key={index} className="p-4 bg-primary-bg rounded-xl border border-border/50 hover:border-accent/30 transition-all">
+                            <div className="flex justify-between items-start gap-4">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-3 mb-2">
+                                  <div className="w-8 h-8 rounded-full bg-accent/20 flex items-center justify-center">
+                                    <span className="text-xs font-bold text-accent">{index + 1}</span>
+                                  </div>
+                                  <h5 className="font-bold text-ink">{res.clientName}</h5>
+                                </div>
+                                <p className="text-xs text-ink/40 ml-11">
+                                  {new Date(res.date).toLocaleDateString('fr-FR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                                </p>
+                              </div>
+                              <div className="text-right">
+                                <p className="font-serif font-bold text-accent text-sm">{formatCurrency(res.amount)}</p>
+                                {res.percentage && (
+                                  <span className="inline-block text-xs font-bold text-accent/60 mt-1">
+                                    {res.percentage.toFixed(0)}%
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="mt-4 p-4 bg-gradient-to-r from-accent/10 to-accent/5 rounded-xl border border-accent/20">
+                        <div className="flex justify-between items-center">
+                          <span className="font-bold text-ink">Total</span>
+                          <span className="font-serif font-bold text-lg text-accent">
+                            {formatCurrency(selectedPaymentDetails.reservations.reduce((sum, r) => sum + r.amount, 0))}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-8 bg-primary-bg rounded-xl text-center">
+                      <p className="text-ink/40 font-medium">Aucune information de réservation disponible</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="sticky bottom-0 bg-white border-t border-border p-5 md:p-8 flex gap-4">
+                <button 
+                  onClick={() => setSelectedPaymentDetails({ isOpen: false, payment: null, reservations: [] })}
                   className="flex-1 py-3 rounded-xl bg-primary-bg text-ink/60 font-bold hover:bg-accent/10 transition-all"
                 >
                   Fermer
