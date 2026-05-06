@@ -8,6 +8,12 @@ import { supabase } from '../lib/supabase';
 const Employees: React.FC = () => {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [payments, setPayments] = useState<EmployeePayment[]>([]);
+  const [paidPeriods, setPaidPeriods] = useState<Array<{
+    workerId: string;
+    startDate: string;
+    endDate: string;
+    totalDays: number;
+  }>>([]);
   const [reservationWorkerEarnings, setReservationWorkerEarnings] = useState<Array<{
     workerId: string;
     amount: number;
@@ -15,6 +21,7 @@ const Employees: React.FC = () => {
     reservationId: string;
   }>>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isDeletingId, setIsDeletingId] = useState<string | null>(null);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
@@ -61,7 +68,7 @@ const Employees: React.FC = () => {
     username: '',
     email: '',
     password: '',
-    createdAt: new Date().toISOString().split('T')[0],
+    hireDate: new Date().toISOString().split('T')[0],
   });
 
   const [paymentFormData, setPaymentFormData] = useState({
@@ -69,6 +76,64 @@ const Employees: React.FC = () => {
     description: '',
     date: new Date().toISOString().split('T')[0]
   });
+
+  const [dailyPaymentData, setDailyPaymentData] = useState({
+    days: '',
+    date: new Date().toISOString().split('T')[0]
+  });
+
+  const [dateRangeOverride, setDateRangeOverride] = useState({
+    lastPaymentDate: '',
+    currentDate: new Date().toISOString().split('T')[0]
+  });
+
+  // Helper function to format date without timezone conversion
+  const formatDateWithoutTimezone = (dateString: string): string => {
+    if (!dateString) return 'N/A';
+    // Handle both date (YYYY-MM-DD) and timestamp formats
+    const dateOnly = dateString.split('T')[0];
+    const [year, month, day] = dateOnly.split('-');
+    return new Date(Number(year), Number(month) - 1, Number(day)).toLocaleDateString('fr-FR');
+  };
+
+  // Helper function to parse date string to Date object WITHOUT timezone conversion
+  const parseDateString = (dateString: string): Date => {
+    if (!dateString) return new Date();
+    const dateOnly = dateString.split('T')[0];
+    const [year, month, day] = dateOnly.split('-');
+    return new Date(Number(year), Number(month) - 1, Number(day));
+  };
+
+  // Helper function to fetch paid periods for a worker
+  const fetchPaidPeriods = async (workerId: string): Promise<Array<{ startDate: Date; endDate: Date; }>> => {
+    try {
+      const { data, error } = await supabase
+        .from('worker_daily_payment_periods')
+        .select('start_date, end_date')
+        .eq('worker_id', workerId)
+        .eq('status', 'paid');
+      
+      if (error) {
+        console.error('Error fetching paid periods:', error);
+        return [];
+      }
+
+      return (data || []).map(p => ({
+        startDate: parseDateString(p.start_date),
+        endDate: parseDateString(p.end_date)
+      }));
+    } catch (err) {
+      console.error('Error in fetchPaidPeriods:', err);
+      return [];
+    }
+  };
+
+  // Helper function to check if a date is within any paid period
+  const isDateInPaidPeriod = (date: Date, paidPeriods: Array<{ startDate: Date; endDate: Date; }>): boolean => {
+    return paidPeriods.some(period => 
+      date >= period.startDate && date <= period.endDate
+    );
+  };
 
   const fetchData = async () => {
     setIsLoading(true);
@@ -97,7 +162,7 @@ const Employees: React.FC = () => {
           percentage: p.percentage,
           dailyRate: p.daily_rate,
           monthlyRate: p.monthly_rate,
-          createdAt: p.created_at
+          hireDate: p.hire_date
         }));
       setEmployees(mappedEmployees);
     }
@@ -120,6 +185,24 @@ const Employees: React.FC = () => {
         status: p.status || 'unpaid' // Include status field from database
       }));
       setPayments(mappedPayments);
+    }
+
+    // Fetch payment periods for daily workers
+    const { data: periodsData, error: periodsError } = await supabase
+      .from('worker_daily_payment_periods')
+      .select('worker_id, start_date, end_date, total_days')
+      .eq('status', 'paid');
+    
+    if (periodsError) {
+      console.error('Error fetching payment periods:', periodsError);
+    } else {
+      const mappedPeriods = (periodsData || []).map(p => ({
+        workerId: p.worker_id,
+        startDate: p.start_date,
+        endDate: p.end_date,
+        totalDays: p.total_days
+      }));
+      setPaidPeriods(mappedPeriods);
     }
 
     // Fetch reservation worker earnings
@@ -156,6 +239,12 @@ const Employees: React.FC = () => {
       return;
     }
 
+    // Validate hired date is provided
+    if (!formData.hireDate) {
+      alert('Veuillez sélectionner la date d\'embauche');
+      return;
+    }
+
     // For new employees, require email and password
     if (!editingEmployee) {
       if (!formData.email || !formData.password) {
@@ -188,7 +277,7 @@ const Employees: React.FC = () => {
       percentage: formData.paymentType === 'percentage' ? Number(formData.percentage) : null,
       daily_rate: formData.paymentType === 'days' ? Number(formData.dailyRate) : null,
       monthly_rate: formData.paymentType === 'month' ? Number(formData.monthlyRate) : null,
-      created_at: formData.createdAt,
+      hire_date: formData.hireDate,
     };
 
     if (editingEmployee) {
@@ -202,17 +291,27 @@ const Employees: React.FC = () => {
         console.error('Error updating profile:', error);
         alert('Erreur lors de la mise à jour: ' + error.message);
       } else {
-        alert('Employé mis à jour avec succès!');
         setIsModalOpen(false);
         resetForm();
         fetchData();
       }
     } else {
-      // For adding a new employee - create auth user first
+      // For adding a new employee - create auth user ONLY (without auto-login)
       try {
-        // Create auth user via standard signup (available with anon key)
+        // Save current admin session before creating worker account
+        const { data: { session: currentSession } } = await supabase.auth.getSession();
+        const currentUser = currentSession?.user;
+        
+        if (!currentUser) {
+          alert('Erreur: Vous devez être connecté pour créer un employé');
+          return;
+        }
+
+        console.log('[CREATE WORKER] Current admin user:', currentUser.id);
+
+        // Create auth user via signup (available with anon key)
         const { data: authData, error: authError } = await supabase.auth.signUp({
-          email: formData.email,
+          email: formData.email.toLowerCase().trim(),
           password: formData.password,
           options: {
             emailRedirectTo: window.location.origin,
@@ -222,7 +321,15 @@ const Employees: React.FC = () => {
 
         if (authError) {
           console.error('Error creating auth user:', authError);
-          alert('Erreur lors de la création du compte: ' + authError.message);
+          
+          // Handle specific error messages
+          if (authError.message.includes('already registered') || authError.message.includes('User already')) {
+            alert('Erreur: Cet email est déjà utilisé. Veuillez utiliser un email différent.');
+          } else if (authError.message.includes('Invalid email')) {
+            alert('Erreur: Format d\'email invalide. Veuillez vérifier votre email.');
+          } else {
+            alert('Erreur lors de la création du compte: ' + authError.message);
+          }
           return;
         }
 
@@ -230,6 +337,8 @@ const Employees: React.FC = () => {
           alert('Erreur: Impossible de créer le compte');
           return;
         }
+
+        console.log('[CREATE WORKER] New worker auth user created:', authData.user.id);
 
         // Create profile with auth user ID
         const { error: profileError } = await supabase
@@ -243,12 +352,29 @@ const Employees: React.FC = () => {
         if (profileError) {
           console.error('Error creating profile:', profileError);
           alert('Erreur lors de la création du profil: ' + profileError.message);
-        } else {
-          alert('Employé créé avec succès! Il peut maintenant se connecter avec son email et mot de passe.');
-          setIsModalOpen(false);
-          resetForm();
-          fetchData();
+          // Try to delete the auth user we just created since profile creation failed
+          try {
+            await supabase.auth.admin.deleteUser(authData.user.id);
+          } catch (deleteError) {
+            console.error('Could not delete orphaned auth user:', deleteError);
+          }
+          return;
         }
+
+        console.log('[CREATE WORKER] Worker profile created, restoring admin session');
+
+        // CRITICAL: Restore the admin session immediately
+        // This prevents auto-login to the new worker account
+        if (currentSession) {
+          await supabase.auth.setSession(currentSession);
+          console.log('[CREATE WORKER] Admin session restored successfully');
+        }
+
+        // Close modal and refresh
+        setIsModalOpen(false);
+        resetForm();
+        fetchData();
+        
       } catch (error: any) {
         console.error('Error creating employee:', error);
         alert('Erreur: ' + error.message);
@@ -269,7 +395,7 @@ const Employees: React.FC = () => {
       username: '',
       email: '',
       password: '',
-      createdAt: new Date().toISOString().split('T')[0],
+      hireDate: new Date().toISOString().split('T')[0],
     });
   };
 
@@ -287,109 +413,173 @@ const Employees: React.FC = () => {
       username: emp.username,
       email: '',
       password: '',
-      createdAt: emp.createdAt?.split('T')[0] || new Date().toISOString().split('T')[0],
+      hireDate: emp.hireDate || '',
     });
     setIsModalOpen(true);
   };
 
   const openHistoryModal = async (emp: Employee) => {
     try {
-      // Fetch all reservation_workers records for this worker
-      const { data: workerReservationsData, error: workerReservationsError } = await supabase
-        .from('reservation_workers')
-        .select(`
-          id,
-          reservation_id,
-          worker_id,
-          payment_type,
-          amount,
-          percentage,
-          status,
-          reservations(
-            id,
-            client_name,
-            date,
-            status,
-            total_price,
-            paid_amount
-          )
-        `)
-        .eq('worker_id', emp.id)
-        .order('reservations(date)', { ascending: false });
+      // Show modal immediately with existing data
+      setHistoryModal({
+        isOpen: true,
+        employee: emp
+      });
 
-      if (workerReservationsError) {
-        console.error('Error fetching worker reservations:', workerReservationsError);
-      } else {
-        console.log('Worker reservations fetched:', workerReservationsData);
-      }
-
-      // Fetch all payments for this employee
+      // Filter payments for this employee from already loaded data
       const employeePayments = payments.filter(p => p.employeeId === emp.id)
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-      // Map worker reservations to works
-      const works = (workerReservationsData || []).map((wr: any) => ({
-        id: wr.reservation_id,
-        name: wr.reservations?.client_name || 'Client',
-        date: wr.reservations?.date,
-        status: wr.reservations?.status,
-        price: wr.amount || 0,
-        paidAmount: 0,
-        paymentType: wr.payment_type,
-        percentage: wr.percentage,
-        reservationWorkerStatus: wr.status
-      }));
+      // Set history data with existing employee earnings
+      const works = reservationWorkerEarnings
+        .filter(rw => rw.workerId === emp.id)
+        .map(rw => ({
+          id: rw.reservationId,
+          name: `Réservation #${rw.reservationId.substring(0, 8)}`,
+          date: new Date().toISOString().split('T')[0],
+          status: 'completed',
+          price: rw.amount || 0,
+          paidAmount: 0,
+          paymentType: '',
+          percentage: 0,
+          reservationWorkerStatus: rw.status
+        }));
 
       setHistoryData({
         works,
         payments: employeePayments
       });
 
-      setHistoryModal({
-        isOpen: true,
-        employee: emp
-      });
+      // Fetch detailed reservation info in background if needed
+      if (reservationWorkerEarnings.filter(rw => rw.workerId === emp.id).length > 0) {
+        supabase
+          .from('reservation_workers')
+          .select(`
+            reservation_id,
+            worker_id,
+            amount,
+            status,
+            reservations(client_name, date)
+          `)
+          .eq('worker_id', emp.id)
+          .then(({ data: workerReservationsData, error: workerReservationsError }) => {
+            if (!workerReservationsError && workerReservationsData) {
+              const detailedWorks = workerReservationsData.map((wr: any) => ({
+                id: wr.reservation_id,
+                name: wr.reservations?.client_name || 'Client',
+                date: wr.reservations?.date || new Date().toISOString().split('T')[0],
+                status: 'completed',
+                price: wr.amount || 0,
+                paidAmount: 0,
+                paymentType: '',
+                percentage: 0,
+                reservationWorkerStatus: wr.status
+              }));
+              setHistoryData(prev => ({
+                ...prev,
+                works: detailedWorks
+              }));
+            }
+          });
+      }
     } catch (error) {
       console.error('Error opening history modal:', error);
     }
   };
 
   const handleDeleteEmployee = async () => {
-    if (!deleteConfirm) return;
+    if (!deleteConfirm) {
+      console.warn('[DELETE] No employee selected for deletion');
+      return;
+    }
     
     try {
-      // Delete all associated payments first
-      const { error: paymentsError } = await supabase
+      // Prevent double-clicks
+      setIsDeletingId(deleteConfirm.id);
+      
+      const employeeIdToDelete = deleteConfirm.id;
+      console.log('[DELETE] Starting employee deletion:', employeeIdToDelete);
+      
+      // First, delete all associated payments (in case CASCADE isn't set up)
+      console.log('[DELETE] Deleting associated payments...');
+      const { data: deletedPayments, error: paymentsError } = await supabase
         .from('employee_payments')
         .delete()
-        .eq('employee_id', deleteConfirm.id);
+        .eq('employee_id', employeeIdToDelete)
+        .select(); // Add select() to verify deletion
 
+      console.log('[DELETE] Payments deletion response:', { data: deletedPayments, error: paymentsError });
+      
       if (paymentsError) {
-        console.error('Error deleting payments:', paymentsError);
-        alert('Erreur lors de la suppression des paiements de cet employé');
-        setDeleteConfirm(null);
-        return;
+        console.error('[DELETE ERROR] Failed to delete payments:', paymentsError);
+        // Don't throw - continue with deletion even if payments delete fails
       }
 
-      // Then delete the employee profile
-      const { error: profileError } = await supabase
+      // Delete reservation worker records
+      console.log('[DELETE] Deleting reservation worker records...');
+      const { data: deletedWorkers, error: resWorkerError } = await supabase
+        .from('reservation_workers')
+        .delete()
+        .eq('worker_id', employeeIdToDelete)
+        .select(); // Add select() to verify deletion
+
+      console.log('[DELETE] Workers deletion response:', { data: deletedWorkers, error: resWorkerError });
+      
+      if (resWorkerError) {
+        console.error('[DELETE ERROR] Failed to delete reservation workers:', resWorkerError);
+        // Don't throw - continue with deletion even if workers delete fails
+      }
+
+      // Delete worker_reservation_payments if it exists
+      console.log('[DELETE] Deleting worker reservation payments...');
+      const { data: deletedWorkerPayments, error: workerPaymentsError } = await supabase
+        .from('worker_reservation_payments')
+        .delete()
+        .eq('worker_id', employeeIdToDelete)
+        .select();
+
+      console.log('[DELETE] Worker payments deletion response:', { data: deletedWorkerPayments, error: workerPaymentsError });
+
+      // Finally, delete the employee profile
+      console.log('[DELETE] Deleting employee profile...');
+      const { data: deletedProfile, error: profileError } = await supabase
         .from('profiles')
         .delete()
-        .eq('id', deleteConfirm.id);
+        .eq('id', employeeIdToDelete)
+        .select(); // Add select() to verify deletion
+
+      console.log('[DELETE] Profile deletion response:', { data: deletedProfile, error: profileError });
 
       if (profileError) {
-        console.error('Error deleting profile:', profileError);
-        alert('Erreur lors de la suppression de l\'employé');
-      } else {
-        // Refresh data after successful deletion
-        await fetchData();
-        alert('Employé supprimé avec succès!');
+        console.error('[DELETE ERROR] Failed to delete profile:', profileError);
+        throw profileError;
       }
-    } catch (error) {
-      console.error('Error during deletion:', error);
-      alert('Une erreur s\'est produite lors de la suppression');
-    } finally {
+
+      // Check if deletion was actually successful
+      if (!deletedProfile || deletedProfile.length === 0) {
+        console.warn('[DELETE WARNING] Delete returned no rows - checking if RLS policies are blocking deletion');
+        // Even though no error, the delete didn't actually happen
+        // This is usually due to RLS policies
+        throw new Error('La suppression a échoué silencieusement - vérifiez les permissions RLS');
+      }
+
+      console.log('[DELETE SUCCESS] Employee and all related records deleted:', deletedProfile);
+      
+      // Update local state immediately
+      setEmployees(prev => prev.filter(emp => emp.id !== employeeIdToDelete));
+      setPayments(prev => prev.filter(p => p.employeeId !== employeeIdToDelete));
+      setReservationWorkerEarnings(prev => prev.filter(rw => rw.workerId !== employeeIdToDelete));
+      
       setDeleteConfirm(null);
+      setIsDeletingId(null);
+    } catch (error) {
+      console.error('[DELETE CRITICAL ERROR]:', error);
+      alert(`Erreur lors de la suppression: ${error instanceof Error ? error.message : 'Erreur inconnue'}`);
+      setIsDeletingId(null);
+      setDeleteConfirm(null);
+      // Refetch data to ensure UI is in sync with database
+      console.log('[DELETE] Refetching data after error...');
+      await fetchData();
     }
   };
 
@@ -405,14 +595,27 @@ const Employees: React.FC = () => {
       status: 'unpaid' // New acomptes/absences are always unpaid initially
     };
 
-    const { error } = await supabase
+    const { data: insertedPayment, error } = await supabase
       .from('employee_payments')
-      .insert([paymentData]);
+      .insert([paymentData])
+      .select();
 
     if (error) {
       console.error('Error adding payment:', error);
     } else {
-      fetchData();
+      // Update local state immediately instead of full refetch
+      if (insertedPayment && insertedPayment.length > 0) {
+        const newPayment = insertedPayment[0];
+        setPayments(prev => [...prev, {
+          id: newPayment.id,
+          employeeId: newPayment.employee_id,
+          amount: newPayment.amount,
+          type: newPayment.type,
+          description: newPayment.description,
+          date: newPayment.date,
+          status: newPayment.status || 'unpaid'
+        }]);
+      }
     }
 
     setPaymentModal({ isOpen: false, employee: null, type: 'acompte' });
@@ -421,6 +624,7 @@ const Employees: React.FC = () => {
       description: '',
       date: new Date().toISOString().split('T')[0]
     });
+    setDateRangeOverride({ lastPaymentDate: '', currentDate: new Date().toISOString().split('T')[0] });
   };
 
   const handleValidatePayment = async () => {
@@ -429,10 +633,11 @@ const Employees: React.FC = () => {
     try {
       const employeeId = paymentModal.employee.id;
       
-      // Get current calculation details
+      // Get current calculation details with custom days if provided
+      const customDays = paymentModal.employee.paymentType === 'days' && dailyPaymentData.days ? parseInt(dailyPaymentData.days) : undefined;
       const details = paymentModal.employee.paymentType === 'percentage'
         ? calculatePercentageEarnings(employeeId)
-        : calculateNetSalary(employeeId);
+        : calculateNetSalary(employeeId, customDays);
 
       // Get the date of the last salary payment to match the calculation logic
       const lastSalaryPayment = payments
@@ -450,17 +655,41 @@ const Employees: React.FC = () => {
         (p.status === 'unpaid' || !p.status)
       );
 
-      if (unpaidDeductions.length === 0) {
+      // For percentage workers, check if there are unpaid work earnings instead
+      const unpaidWorkEarnings = paymentModal.employee?.paymentType === 'percentage'
+        ? reservationWorkerEarnings.filter(rw => rw.workerId === employeeId && rw.status === 'unpaid')
+        : [];
+
+      // For regular workers, check deductions; for percentage workers, check work earnings
+      const hasPaymentToProcess = paymentModal.employee?.paymentType === 'percentage'
+        ? unpaidWorkEarnings.length > 0
+        : details.net > 0;
+
+      if (!hasPaymentToProcess) {
         alert('Aucune déduction à payer');
         return;
       }
 
       // Create salary payment record with included deductions info
+      let description = '';
+      if (paymentModal.employee?.paymentType === 'percentage') {
+        description = `Paiement du salaire - Commissions: ${unpaidWorkEarnings.length} travaux`;
+      } else if (paymentModal.employee?.paymentType === 'days') {
+        const employee = employees.find(e => e.id === employeeId);
+        const lastPaidDate = lastPaymentDate > new Date('2000-01-01') ? lastPaymentDate : parseDateString(employee?.hireDate || '');
+        const fromDate = new Date(lastPaidDate.getTime() + 1000 * 60 * 60 * 24);
+        const toDate = new Date();
+        const daysCount = customDays || details.days;
+        description = `Paiement journalier - ${fromDate.toLocaleDateString('fr-FR')} au ${toDate.toLocaleDateString('fr-FR')} (${daysCount} jours)`;
+      } else {
+        description = `Paiement du salaire - Déductions incluses: ${unpaidDeductions.length}`;
+      }
+
       const salaryPayment = {
         employee_id: employeeId,
         type: 'salary',
         amount: details.net,
-        description: `Paiement du salaire - Déductions incluses: ${unpaidDeductions.length}`,
+        description: description,
         date: new Date().toISOString().split('T')[0],
         status: 'paid'
       };
@@ -475,38 +704,84 @@ const Employees: React.FC = () => {
         return;
       }
 
+      // For daily workers, record the payment period
+      if (paymentModal.employee?.paymentType === 'days') {
+        const employee = employees.find(e => e.id === employeeId);
+        const lastSalaryPayment = payments
+          .filter(p => p.employeeId === employeeId && p.type === 'salary')
+          .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+        
+        const lastPaidDate = lastSalaryPayment ? lastSalaryPayment.date : employee?.hireDate;
+        const startDate = lastPaidDate ? new Date(new Date(lastPaidDate).getTime() + 1000 * 60 * 60 * 24) : parseDateString(employee?.hireDate || '');
+        const endDate = new Date();
+        const daysCount = customDays || details.days;
+        
+        const periodRecord = {
+          worker_id: employeeId,
+          start_date: startDate.toISOString().split('T')[0],
+          end_date: endDate.toISOString().split('T')[0],
+          total_days: daysCount,
+          daily_rate: employee?.dailyRate || 0,
+          total_amount: details.net,
+          payment_date: new Date().toISOString().split('T')[0],
+          status: 'paid',
+          description: description
+        };
+        
+        const { error: periodError, data: periodData } = await supabase
+          .from('worker_daily_payment_periods')
+          .insert([periodRecord]);
+        
+        if (periodError) {
+          console.error('Error recording daily payment period:', periodError);
+          // Don't fail the whole operation, just log it
+        } else {
+          console.log('Daily payment period recorded successfully');
+          // Update paidPeriods state immediately with the new period
+          const newPeriodItem = {
+            workerId: employeeId,
+            startDate: periodRecord.start_date,
+            endDate: periodRecord.end_date,
+            totalDays: periodRecord.total_days
+          };
+          setPaidPeriods(prev => [...prev, newPeriodItem]);
+        }
+      }
+
       // Mark all unpaid deductions as paid - use a batch update if possible
       let updateCount = 0;
       
       // Try batch update first
-      const deductionIds = unpaidDeductions.map(d => d.id);
-      console.log('Attempting to mark deductions as paid:', deductionIds);
-      const { error: batchError, data: batchData } = await supabase
-        .from('employee_payments')
-        .update({ status: 'paid' })
-        .in('id', deductionIds);
+      if (unpaidDeductions.length > 0) {
+        const deductionIds = unpaidDeductions.map(d => d.id);
+        console.log('Attempting to mark deductions as paid:', deductionIds);
+        const { error: batchError, data: batchData } = await supabase
+          .from('employee_payments')
+          .update({ status: 'paid' })
+          .in('id', deductionIds);
 
-      if (batchError) {
-        console.error('Batch update failed, trying individual updates:', batchError);
-        // Fallback to individual updates
-        for (const deduction of unpaidDeductions) {
-          const { error: updateError } = await supabase
-            .from('employee_payments')
-            .update({ status: 'paid' })
-            .eq('id', deduction.id);
+        if (batchError) {
+          console.error('Batch update failed, trying individual updates:', batchError);
+          // Fallback to individual updates
+          for (const deduction of unpaidDeductions) {
+            const { error: updateError } = await supabase
+              .from('employee_payments')
+              .update({ status: 'paid' })
+              .eq('id', deduction.id);
 
-          if (updateError) {
-            console.error(`Error marking deduction ${deduction.id} as paid:`, updateError);
-          } else {
-            updateCount++;
+            if (updateError) {
+              console.error(`Error marking deduction ${deduction.id} as paid:`, updateError);
+            } else {
+              updateCount++;
+            }
           }
+        } else {
+          updateCount = unpaidDeductions.length;
+          console.log(`Batch update successful: ${updateCount} deductions marked as paid`);
         }
-      } else {
-        updateCount = unpaidDeductions.length;
-        console.log(`Batch update successful: ${updateCount} deductions marked as paid`);
-      }
 
-      console.log(`Updated ${updateCount} of ${unpaidDeductions.length} deductions to paid status`);
+        console.log(`Updated ${updateCount} of ${unpaidDeductions.length} deductions to paid status`);
+      }
 
       // Also mark all unpaid reservation worker earnings as paid
       if (paymentModal.employee.paymentType === 'percentage') {
@@ -530,13 +805,34 @@ const Employees: React.FC = () => {
         }
       }
 
-      // Refresh data and close modal
-      await fetchData();
+      // Refresh data and close modal  - use selective update instead of full refetch
+      // Update payments locally for better performance
+      const updatedPayments = payments.map(p => {
+        if (unpaidDeductions.some(d => d.id === p.id)) {
+          return { ...p, status: 'paid' };
+        }
+        return p;
+      });
+      
+      setPayments(updatedPayments);
+
+      // Update reservation worker earnings locally
+      if (paymentModal.employee.paymentType === 'percentage') {
+        setReservationWorkerEarnings(prevEarnings => 
+          prevEarnings.map(rw => 
+            rw.workerId === employeeId && rw.status === 'unpaid' 
+              ? { ...rw, status: 'paid' as const }
+              : rw
+          )
+        );
+      }
+
       setPaymentModal({ isOpen: false, employee: null, type: 'acompte' });
+      setDailyPaymentData({ days: '', date: new Date().toISOString().split('T')[0] });
+      setDateRangeOverride({ lastPaymentDate: '', currentDate: new Date().toISOString().split('T')[0] });
      
     } catch (error) {
       console.error('Error during payment validation:', error);
-      alert('Une erreur s\'est produite lors de la validation du paiement');
       alert('Une erreur s\'est produite lors de la validation du paiement');
     }
   };
@@ -558,22 +854,72 @@ const Employees: React.FC = () => {
         return;
       }
 
-      await fetchData();
+      // Update payments state immediately without waiting for fetchData
+      setPayments(prevPayments => prevPayments.filter(p => p.id !== paymentId));
+      
       alert('Supprimé avec succès!');
+      
+      // Optionally refresh in background
+      fetchData().catch(err => console.error('Error refreshing data after delete:', err));
     } catch (error) {
       console.error('Error:', error);
       alert('Une erreur s\'est produite');
     }
   };
 
-  const calculateNetSalary = (employeeId: string) => {
+  const calculateNetSalary = (employeeId: string, customDays?: number) => {
     // Get the actual employee to fetch their real salary amount
     const employee = employees.find(emp => emp.id === employeeId);
     
     // Use the real amount based on payment type
     let baseSalary = 0;
+    let actualDays = 0;
+    let calculationStartDate = new Date();
+    
     if (employee?.paymentType === 'days' && employee?.dailyRate) {
-      baseSalary = employee.dailyRate * 22; // Approximate working days in a month
+      // Calculate days from last paid period or hire date to current date
+      if (customDays !== undefined) {
+        actualDays = customDays;
+      } else {
+        // Get the last paid period for this worker
+        const workerPaidPeriods = paidPeriods.filter(p => p.workerId === employeeId);
+        let startDate: Date;
+        
+        if (workerPaidPeriods.length > 0) {
+          // Get the most recent paid period
+          const lastPaidPeriod = workerPaidPeriods.reduce((latest, current) => {
+            const latestEnd = parseDateString(latest.endDate);
+            const currentEnd = parseDateString(current.endDate);
+            return currentEnd > latestEnd ? current : latest;
+          });
+          // Start from day after last paid period
+          const lastPaidDate = parseDateString(lastPaidPeriod.endDate);
+          startDate = new Date(lastPaidDate);
+          startDate.setDate(startDate.getDate() + 1);
+          calculationStartDate = startDate;
+        } else {
+          // No paid periods, start from hire date
+          startDate = employee.hireDate ? parseDateString(employee.hireDate) : new Date();
+          calculationStartDate = startDate;
+        }
+        
+        // Get the actual current date from system (without time component)
+        const currentDate = new Date();
+        currentDate.setHours(0, 0, 0, 0);
+        
+        // Count days between start date and today (inclusive of start date, inclusive of today)
+        let daysCount = 0;
+        const loopDate = new Date(startDate);
+        loopDate.setHours(0, 0, 0, 0);
+        
+        while (loopDate <= currentDate) {
+          daysCount++;
+          loopDate.setDate(loopDate.getDate() + 1);
+        }
+        
+        actualDays = daysCount;
+      }
+      baseSalary = employee.dailyRate * actualDays;
     } else if (employee?.paymentType === 'month' && employee?.monthlyRate) {
       baseSalary = employee.monthlyRate;
     } else {
@@ -597,10 +943,12 @@ const Employees: React.FC = () => {
     const totalDeductions = empPayments.reduce((sum, p) => sum + p.amount, 0);
     return {
       base: baseSalary,
+      days: actualDays || 0,
       deductions: totalDeductions,
       net: baseSalary - totalDeductions,
       acomptes: empPayments.filter(p => p.type === 'acompte').reduce((sum, p) => sum + p.amount, 0),
-      absences: empPayments.filter(p => p.type === 'absence').reduce((sum, p) => sum + p.amount, 0)
+      absences: empPayments.filter(p => p.type === 'absence').reduce((sum, p) => sum + p.amount, 0),
+      calculationStartDate: calculationStartDate
     };
   };
 
@@ -638,10 +986,12 @@ const Employees: React.FC = () => {
     return {
       base: reservationEarnings,
       total: reservationEarnings,
+      days: 0,
       deductions: totalDeductions,
       net: reservationEarnings - totalDeductions,
       acomptes: deductions.filter(p => p.type === 'acompte').reduce((sum, p) => sum + p.amount, 0),
-      absences: deductions.filter(p => p.type === 'absence').reduce((sum, p) => sum + p.amount, 0)
+      absences: deductions.filter(p => p.type === 'absence').reduce((sum, p) => sum + p.amount, 0),
+      calculationStartDate: new Date()
     };
   };
 
@@ -707,7 +1057,7 @@ const Employees: React.FC = () => {
                 <div className="w-8 h-8 rounded-lg bg-primary-bg flex items-center justify-center text-accent/60">
                   <Calendar size={16} />
                 </div>
-                <span>Embauché le: <span className="text-accent font-bold">{emp.createdAt ? new Date(emp.createdAt).toLocaleDateString('fr-FR') : 'N/A'}</span></span>
+                <span>Embauché le: <span className="text-accent font-bold">{formatDateWithoutTimezone(emp.hireDate)}</span></span>
               </div>
               <div className="flex items-center gap-4 text-sm text-ink/60 font-medium">
                 <div className="w-8 h-8 rounded-lg bg-primary-bg flex items-center justify-center text-accent/60">
@@ -729,19 +1079,19 @@ const Employees: React.FC = () => {
                 <History size={16} /> Historique
               </button>
               <button 
-                onClick={() => setPaymentModal({ isOpen: true, employee: emp, type: 'acompte' })}
+                onClick={() => { setPaymentModal({ isOpen: true, employee: emp, type: 'acompte' }); setPaymentFormData({ amount: '', description: '', date: new Date().toISOString().split('T')[0] }); setDateRangeOverride({ lastPaymentDate: '', currentDate: new Date().toISOString().split('T')[0] }); }}
                 className="flex flex-col items-center gap-1 p-2 rounded-xl bg-primary-bg hover:bg-accent/10 text-ink/60 hover:text-accent transition-all text-[10px] font-bold uppercase tracking-wider"
               >
                 <PlusCircle size={16} /> Acompte
               </button>
               <button 
-                onClick={() => setPaymentModal({ isOpen: true, employee: emp, type: 'absence' })}
+                onClick={() => { setPaymentModal({ isOpen: true, employee: emp, type: 'absence' }); setPaymentFormData({ amount: '', description: '', date: new Date().toISOString().split('T')[0] }); setDateRangeOverride({ lastPaymentDate: '', currentDate: new Date().toISOString().split('T')[0] }); }}
                 className="flex flex-col items-center gap-1 p-2 rounded-xl bg-primary-bg hover:bg-red-50 text-ink/60 hover:text-red-500 transition-all text-[10px] font-bold uppercase tracking-wider"
               >
                 <MinusCircle size={16} /> Absence
               </button>
               <button 
-                onClick={() => setPaymentModal({ isOpen: true, employee: emp, type: 'payment' })}
+                onClick={() => { setPaymentModal({ isOpen: true, employee: emp, type: 'payment' }); setPaymentFormData({ amount: '', description: '', date: new Date().toISOString().split('T')[0] }); setDateRangeOverride({ lastPaymentDate: '', currentDate: new Date().toISOString().split('T')[0] }); }}
                 className="flex flex-col items-center gap-1 p-2 rounded-xl bg-accent text-white hover:bg-accent/90 transition-all text-[10px] font-bold uppercase tracking-wider shadow-lg shadow-accent/20"
               >
                 <DollarSign size={16} /> Paiement
@@ -757,7 +1107,8 @@ const Employees: React.FC = () => {
               </button>
               <button 
                 onClick={() => setDeleteConfirm({ isOpen: true, id: emp.id, name: emp.fullName })}
-                className="p-3 rounded-xl bg-red-50 text-red-400 hover:bg-red-500 hover:text-white transition-all duration-300 shadow-sm"
+                disabled={isDeletingId === emp.id}
+                className="p-3 rounded-xl bg-red-50 text-red-400 hover:bg-red-500 hover:text-white transition-all duration-300 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Trash2 size={18} />
               </button>
@@ -774,7 +1125,7 @@ const Employees: React.FC = () => {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              onClick={() => setPaymentModal({ isOpen: false, employee: null, type: 'acompte' })}
+              onClick={() => { setPaymentModal({ isOpen: false, employee: null, type: 'acompte' }); setDailyPaymentData({ days: '', date: new Date().toISOString().split('T')[0] }); setDateRangeOverride({ lastPaymentDate: '', currentDate: new Date().toISOString().split('T')[0] }); }}
               className="fixed inset-0 bg-ink/60 backdrop-blur-sm"
             />
             <motion.div 
@@ -790,7 +1141,7 @@ const Employees: React.FC = () => {
                      paymentModal.type === 'absence' ? 'Nouvelle Absence' : 
                      'Calcul du Paiement'}
                   </h3>
-                  <button onClick={() => setPaymentModal({ isOpen: false, employee: null, type: 'acompte' })} className="p-2 rounded-xl hover:bg-primary-bg text-ink/20 hover:text-ink transition-all">
+                  <button onClick={() => { setPaymentModal({ isOpen: false, employee: null, type: 'acompte' }); setDailyPaymentData({ days: '', date: new Date().toISOString().split('T')[0] }); setDateRangeOverride({ lastPaymentDate: '', currentDate: new Date().toISOString().split('T')[0] }); }} className="p-2 rounded-xl hover:bg-primary-bg text-ink/20 hover:text-ink transition-all">
                     <X size={24} />
                   </button>
                 </div>
@@ -809,21 +1160,213 @@ const Employees: React.FC = () => {
                   <div className="space-y-5">
                     {(() => {
                       const employee = paymentModal.employee!;
+                      const customDays = employee.paymentType === 'days' && dailyPaymentData.days ? parseInt(dailyPaymentData.days) : undefined;
                       const details = employee.paymentType === 'percentage' 
                         ? calculatePercentageEarnings(employee.id)
-                        : calculateNetSalary(employee.id);
+                        : calculateNetSalary(employee.id, customDays);
                       
                       return (
                         <>
+                          {employee.paymentType === 'days' && (
+                            <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100">
+                              <p className="text-xs font-bold text-blue-600 uppercase tracking-widest mb-3">Paie Journalière</p>
+                              <div className="space-y-3">
+                                <div>
+                                  <p className="text-xs text-blue-600 mb-2">Tarier journalier: <span className="font-bold">{formatCurrency(employee.dailyRate || 0)}</span></p>
+                                  {(() => {
+                                    const workerPaidPeriods = paidPeriods.filter(p => p.workerId === employee.id);
+                                    let lastPaymentDate: Date | null = null;
+                                    
+                                    if (workerPaidPeriods.length > 0) {
+                                      const lastPaidPeriod = workerPaidPeriods.reduce((latest, current) => {
+                                        const latestEnd = parseDateString(latest.endDate);
+                                        const currentEnd = parseDateString(current.endDate);
+                                        return currentEnd > latestEnd ? current : latest;
+                                      });
+                                      lastPaymentDate = new Date(parseDateString(lastPaidPeriod.endDate));
+                                    } else {
+                                      // Fallback: check payments history for last salary payment
+                                      const lastSalaryPayment = payments
+                                        .filter(p => p.employeeId === employee.id && p.type === 'salary')
+                                        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+                                      if (lastSalaryPayment) {
+                                        lastPaymentDate = new Date(lastSalaryPayment.date);
+                                      }
+                                    }
+                                    
+                                    // Use override dates if set, otherwise use calculated dates
+                                    const displayLastPaymentDate = dateRangeOverride.lastPaymentDate 
+                                      ? new Date(parseDateString(dateRangeOverride.lastPaymentDate))
+                                      : lastPaymentDate;
+                                    
+                                    const displayCurrentDate = dateRangeOverride.currentDate 
+                                      ? new Date(parseDateString(dateRangeOverride.currentDate))
+                                      : new Date();
+                                    
+                                    // Calculate days between last payment and current date
+                                    let daysBetween = 0;
+                                    if (displayLastPaymentDate) {
+                                      const tempDate = new Date(displayLastPaymentDate);
+                                      tempDate.setHours(0, 0, 0, 0);
+                                      const currentDateNormalized = new Date(displayCurrentDate);
+                                      currentDateNormalized.setHours(0, 0, 0, 0);
+                                      
+                                      // Get the earlier and later dates
+                                      const earlierDate = tempDate <= currentDateNormalized ? tempDate : currentDateNormalized;
+                                      const laterDate = tempDate > currentDateNormalized ? tempDate : currentDateNormalized;
+                                      
+                                      // Count days from earlier to later date (inclusive)
+                                      let loopDate = new Date(earlierDate);
+                                      while (loopDate <= laterDate) {
+                                        daysBetween++;
+                                        loopDate.setDate(loopDate.getDate() + 1);
+                                      }
+                                      
+                                      // Don't count the first day, only count from day after
+                                      daysBetween = daysBetween > 0 ? daysBetween - 1 : 0;
+                                    }
+                                    
+                                    return (
+                                      <div className="space-y-2">
+                                        <div className="space-y-1">
+                                          <label className="text-[10px] font-bold text-blue-600 uppercase tracking-widest">Dernière paie le</label>
+                                          <input 
+                                            type="date"
+                                            value={dateRangeOverride.lastPaymentDate || (lastPaymentDate ? lastPaymentDate.toISOString().split('T')[0] : '')}
+                                            onChange={e => setDateRangeOverride({...dateRangeOverride, lastPaymentDate: e.target.value})}
+                                            className="w-full input-premium text-xs"
+                                          />
+                                          {lastPaymentDate && !dateRangeOverride.lastPaymentDate && (
+                                            <p className="text-[10px] text-blue-500 italic">Détecté: {lastPaymentDate.toLocaleDateString('fr-FR')}</p>
+                                          )}
+                                        </div>
+                                        <div className="space-y-1">
+                                          <label className="text-[10px] font-bold text-blue-600 uppercase tracking-widest">Date actuelle</label>
+                                          <input 
+                                            type="date"
+                                            value={dateRangeOverride.currentDate}
+                                            onChange={e => setDateRangeOverride({...dateRangeOverride, currentDate: e.target.value})}
+                                            className="w-full input-premium text-xs"
+                                          />
+                                        </div>
+                                        <p className="text-xs text-blue-500 italic">Jours écoulés: <span className="font-bold">{daysBetween} jour{daysBetween !== 1 ? 's' : ''}</span></p>
+                                      </div>
+                                    );
+                                  })()}
+                                </div>
+                                <div className="space-y-1">
+                                  <label className="text-xs font-bold text-blue-600 uppercase tracking-widest">Nombre de jours</label>
+                                  <input 
+                                    type="number" 
+                                    value={dailyPaymentData.days}
+                                    onChange={e => setDailyPaymentData({...dailyPaymentData, days: e.target.value})}
+                                    className="w-full input-premium" 
+                                    placeholder={`${details.days} jours`}
+                                  />
+                                  {!dailyPaymentData.days && <p className="text-[10px] text-blue-500 italic">Par défaut: {details.days} jours (du {details.calculationStartDate ? details.calculationStartDate.toLocaleDateString('fr-FR') : 'N/A'} à aujourd'hui)</p>}
+                                </div>
+                              </div>
+                            </div>
+                          )}
                           {employee.paymentType === 'percentage' && (
                             <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100">
                               <p className="text-xs font-bold text-blue-600 uppercase tracking-widest mb-2">Paie Pourcentage</p>
                               <p className="text-sm text-blue-600">Rémunération basée sur {employee.percentage}% des services effectués</p>
                             </div>
                           )}
+                          {employee.paymentType === 'month' && (
+                            <div className="p-4 bg-green-50 rounded-2xl border border-green-100">
+                              <p className="text-xs font-bold text-green-600 uppercase tracking-widest mb-3">Paie Mensuelle</p>
+                              <div className="space-y-3">
+                                <div>
+                                  <p className="text-xs text-green-600 mb-2">Salaire mensuel: <span className="font-bold">{formatCurrency(employee.monthlyRate || 0)}</span></p>
+                                  {(() => {
+                                    const workerPaidPeriods = paidPeriods.filter(p => p.workerId === employee.id);
+                                    let lastPaymentDate: Date | null = null;
+                                    
+                                    if (workerPaidPeriods.length > 0) {
+                                      const lastPaidPeriod = workerPaidPeriods.reduce((latest, current) => {
+                                        const latestEnd = parseDateString(latest.endDate);
+                                        const currentEnd = parseDateString(current.endDate);
+                                        return currentEnd > latestEnd ? current : latest;
+                                      });
+                                      lastPaymentDate = new Date(parseDateString(lastPaidPeriod.endDate));
+                                    } else {
+                                      // Fallback: check payments history for last salary payment
+                                      const lastSalaryPayment = payments
+                                        .filter(p => p.employeeId === employee.id && p.type === 'salary')
+                                        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+                                      if (lastSalaryPayment) {
+                                        lastPaymentDate = new Date(lastSalaryPayment.date);
+                                      }
+                                    }
+                                    
+                                    // Use override dates if set, otherwise use calculated dates
+                                    const displayLastPaymentDate = dateRangeOverride.lastPaymentDate 
+                                      ? new Date(parseDateString(dateRangeOverride.lastPaymentDate))
+                                      : lastPaymentDate;
+                                    
+                                    const displayCurrentDate = dateRangeOverride.currentDate 
+                                      ? new Date(parseDateString(dateRangeOverride.currentDate))
+                                      : new Date();
+                                    
+                                    // Calculate days between last payment and current date
+                                    let daysBetween = 0;
+                                    if (displayLastPaymentDate) {
+                                      const tempDate = new Date(displayLastPaymentDate);
+                                      tempDate.setHours(0, 0, 0, 0);
+                                      const currentDateNormalized = new Date(displayCurrentDate);
+                                      currentDateNormalized.setHours(0, 0, 0, 0);
+                                      
+                                      // Get the earlier and later dates
+                                      const earlierDate = tempDate <= currentDateNormalized ? tempDate : currentDateNormalized;
+                                      const laterDate = tempDate > currentDateNormalized ? tempDate : currentDateNormalized;
+                                      
+                                      // Count days from earlier to later date (inclusive)
+                                      let loopDate = new Date(earlierDate);
+                                      while (loopDate <= laterDate) {
+                                        daysBetween++;
+                                        loopDate.setDate(loopDate.getDate() + 1);
+                                      }
+                                      
+                                      // Don't count the first day, only count from day after
+                                      daysBetween = daysBetween > 0 ? daysBetween - 1 : 0;
+                                    }
+                                    
+                                    return (
+                                      <div className="space-y-2">
+                                        <div className="space-y-1">
+                                          <label className="text-[10px] font-bold text-green-600 uppercase tracking-widest">Dernière paie le</label>
+                                          <input 
+                                            type="date"
+                                            value={dateRangeOverride.lastPaymentDate || (lastPaymentDate ? lastPaymentDate.toISOString().split('T')[0] : '')}
+                                            onChange={e => setDateRangeOverride({...dateRangeOverride, lastPaymentDate: e.target.value})}
+                                            className="w-full input-premium text-xs"
+                                          />
+                                          {lastPaymentDate && !dateRangeOverride.lastPaymentDate && (
+                                            <p className="text-[10px] text-green-500 italic">Détecté: {lastPaymentDate.toLocaleDateString('fr-FR')}</p>
+                                          )}
+                                        </div>
+                                        <div className="space-y-1">
+                                          <label className="text-[10px] font-bold text-green-600 uppercase tracking-widest">Date actuelle</label>
+                                          <input 
+                                            type="date"
+                                            value={dateRangeOverride.currentDate}
+                                            onChange={e => setDateRangeOverride({...dateRangeOverride, currentDate: e.target.value})}
+                                            className="w-full input-premium text-xs"
+                                          />
+                                        </div>
+                                        <p className="text-xs text-green-500 italic">Jours écoulés: <span className="font-bold">{daysBetween} jour{daysBetween !== 1 ? 's' : ''}</span></p>
+                                      </div>
+                                    );
+                                  })()}
+                                </div>
+                              </div>
+                            </div>
+                          )}
                           <div className="flex justify-between items-center p-4 bg-primary-bg/50 rounded-2xl border border-border/30">
                             <span className="text-sm text-ink/40 font-medium">
-                              {employee.paymentType === 'percentage' ? 'Total Gains' : 'Salaire de base'}
+                              {employee.paymentType === 'percentage' ? 'Total Gains' : employee.paymentType === 'days' ? `Salaire (${details.days} j)` : 'Salaire de base'}
                             </span>
                             <span className="font-serif font-bold text-lg text-ink">{formatCurrency(details.base)}</span>
                           </div>
@@ -1061,8 +1604,8 @@ const Employees: React.FC = () => {
                       <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-ink/20" size={18} />
                       <input 
                         type="date" 
-                        value={formData.createdAt}
-                        onChange={e => setFormData({...formData, createdAt: e.target.value})}
+                        value={formData.hireDate}
+                        onChange={e => setFormData({...formData, hireDate: e.target.value})}
                         className="w-full input-premium pl-12"
                       />
                     </div>
@@ -1141,7 +1684,7 @@ const Employees: React.FC = () => {
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="relative w-full max-md bg-white rounded-[32px] shadow-2xl overflow-hidden"
+              className="relative w-full max-w-md bg-white rounded-[32px] shadow-2xl overflow-hidden"
             >
               <div className="p-8 text-center space-y-6">
                 <div className="w-20 h-20 rounded-full bg-red-50 flex items-center justify-center text-red-500 mx-auto">
@@ -1154,12 +1697,20 @@ const Employees: React.FC = () => {
                   </p>
                 </div>
                 <div className="flex gap-4 pt-4">
-                  <button onClick={() => setDeleteConfirm(null)} className="flex-1 py-4 rounded-2xl bg-white border border-border font-bold text-ink/40 hover:text-ink transition-all">Annuler</button>
+                  <button onClick={(e) => { e.stopPropagation(); setDeleteConfirm(null); }} className="flex-1 py-4 rounded-2xl bg-white border border-border font-bold text-ink/40 hover:text-ink transition-all">Annuler</button>
                   <button 
-                    onClick={handleDeleteEmployee}
-                    className="flex-1 py-4 rounded-2xl bg-red-500 text-white font-bold hover:bg-red-600 transition-all shadow-lg shadow-red-500/20"
+                    onClick={(e) => { e.stopPropagation(); handleDeleteEmployee(); }}
+                    disabled={isDeletingId === deleteConfirm?.id}
+                    className="flex-1 py-4 rounded-2xl bg-red-500 text-white font-bold hover:bg-red-600 transition-all shadow-lg shadow-red-500/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                   >
-                    Supprimer
+                    {isDeletingId === deleteConfirm?.id ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                        Suppression...
+                      </>
+                    ) : (
+                      'Supprimer'
+                    )}
                   </button>
                 </div>
               </div>
@@ -1391,7 +1942,7 @@ const Employees: React.FC = () => {
                               <div className="flex justify-between items-start gap-4">
                                 <div className="flex-1">
                                   <div className="flex items-center gap-2 mb-1">
-                                    <h5 className="font-bold text-green-900">Paiement</h5>
+                                    <h5 className="font-bold text-green-900">Paiement de Salaire</h5>
                                     <span className="inline-block text-xs font-bold px-2 py-1 rounded-md bg-green-50 text-green-600">
                                       PAYÉ
                                     </span>
@@ -1399,8 +1950,15 @@ const Employees: React.FC = () => {
                                   {payment.description && (
                                     <p className="text-xs text-green-600/60">{payment.description}</p>
                                   )}
+                                  {historyModal.employee?.paymentType === 'days' && payment.description?.includes('journalier') && (
+                                    <div className="mt-2 p-2 bg-white rounded border border-green-200">
+                                      <p className="text-xs text-green-700 font-medium">
+                                        📅 {payment.description.split('(')[1]?.split(')')[0] || 'Détails disponibles'}
+                                      </p>
+                                    </div>
+                                  )}
                                   <p className="text-xs text-green-600/40 mt-2">
-                                    {new Date(payment.date).toLocaleDateString('fr-FR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                                    Payé le: {new Date(payment.date).toLocaleDateString('fr-FR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
                                   </p>
                                 </div>
                                 <div className="text-right flex flex-col items-end gap-2">

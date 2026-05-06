@@ -15,7 +15,7 @@ export interface User {
   percentage?: number;
   dailyRate?: number;
   monthlyRate?: number;
-  createdAt: string;
+  hireDate: string;
 }
 
 export interface Prestation {
