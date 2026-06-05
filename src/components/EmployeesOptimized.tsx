@@ -125,18 +125,10 @@ const EmployeesOptimized: React.FC = () => {
         // Use optimized update
         const result = await DataService.updateRecord('profiles', editingEmployee.id, employeeData);
         if (result.success) {
-          const updatedEmployee: Employee = {
-            ...editingEmployee,
-            fullName: formData.fullName,
-            phone: formData.phone,
-            address: formData.address,
-            role: formData.role,
-            paymentType: formData.paymentType as 'days' | 'month' | 'percentage',
-            percentage: formData.percentage ? parseFloat(formData.percentage) : undefined,
-            username: formData.username,
-          };
           setEmployees(employees.map(e => 
-            e.id === editingEmployee.id ? updatedEmployee : e
+            e.id === editingEmployee.id 
+              ? { ...e, ...formData, percentage: formData.percentage ? parseFloat(formData.percentage) : undefined } 
+              : e
           ));
           setIsModalOpen(false);
           resetForm();
@@ -194,15 +186,14 @@ const EmployeesOptimized: React.FC = () => {
 
       const result = await DataService.insertRecord('employee_payments', paymentData);
       if (result.success) {
-        const newPayment: EmployeePayment = {
-          id: result.data?.id || '',
+        setPayments([...payments, {
+          id: result.data?.id,
           employeeId: paymentModal.employee.id,
           amount: parseFloat(paymentFormData.amount),
-          type: paymentModal.type === 'payment' ? 'salary' : (paymentModal.type as 'acompte' | 'absence'),
+          type: paymentModal.type === 'payment' ? 'salary' : paymentModal.type,
           description: paymentFormData.description,
-          date: paymentFormData.date,
-        };
-        setPayments([...payments, newPayment]);
+          date: paymentFormData.date
+        }]);
         setPaymentModal({ isOpen: false, employee: null, type: 'acompte' });
         resetPaymentForm();
       } else {
@@ -310,7 +301,7 @@ const EmployeesOptimized: React.FC = () => {
                     </div>
                     <span className={cn(
                       'px-3 py-1 rounded-full text-sm font-semibold',
-                      employee.role === 'admin' ? 'bg-red-100 text-red-700' : employee.role === 'super_admin' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'
+                      employee.role === 'admin' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'
                     )}>
                       {employee.role}
                     </span>

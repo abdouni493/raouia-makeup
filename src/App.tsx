@@ -14,7 +14,7 @@ import Prestations from './components/Prestations';
 import Employees from './components/Employees';
 import Inventory from './components/Inventory';
 import Expenses from './components/Expenses';
-import ReportsEnhanced from './components/ReportsEnhanced';
+import Reports from './components/Reports';
 import Configuration from './components/Configuration';
 import WorkerPayments from './components/WorkerPayments';
 import { User, StoreConfig, Role } from './types';
@@ -206,7 +206,7 @@ const App: React.FC = () => {
                 {activeTab === 'purchases' && <Inventory initialTab="purchases" />}
                 {activeTab === 'invoices' && <Inventory initialTab="invoices" />}
                 {activeTab === 'expenses' && <Expenses />}
-                {activeTab === 'reports' && <ReportsEnhanced />}
+                {activeTab === 'reports' && <Reports />}
                 {activeTab === 'config' && <Configuration user={user!} config={storeConfig} />}
               </motion.div>
             </AnimatePresence>
