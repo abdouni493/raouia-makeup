@@ -26,17 +26,17 @@ const Employees: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; id: string; name: string } | null>(null);
-  
+
   const [historyModal, setHistoryModal] = useState<{ isOpen: boolean; employee: Employee | null }>({
     isOpen: false,
     employee: null
   });
 
   const [historyData, setHistoryData] = useState<{
-    works: Array<{ 
-      id: string; 
-      name: string; 
-      date: string; 
+    works: Array<{
+      id: string;
+      name: string;
+      date: string;
       status?: string;
       price?: number;
       paidAmount?: number;
@@ -64,7 +64,7 @@ const Employees: React.FC = () => {
     payment: null,
     reservations: []
   });
-  
+
   const [paymentModal, setPaymentModal] = useState<{ isOpen: boolean; employee: Employee | null; type: 'acompte' | 'absence' | 'payment' }>({
     isOpen: false,
     employee: null,
@@ -166,7 +166,7 @@ const Employees: React.FC = () => {
         .select('start_date, end_date')
         .eq('worker_id', workerId)
         .eq('status', 'paid');
-      
+
       if (error) {
         console.error('Error fetching paid periods:', error);
         return [];
@@ -184,19 +184,19 @@ const Employees: React.FC = () => {
 
   // Helper function to check if a date is within any paid period
   const isDateInPaidPeriod = (date: Date, paidPeriods: Array<{ startDate: Date; endDate: Date; }>): boolean => {
-    return paidPeriods.some(period => 
+    return paidPeriods.some(period =>
       date >= period.startDate && date <= period.endDate
     );
   };
 
   const fetchData = async () => {
     setIsLoading(true);
-    
+
     // Fetch profiles (employees)
     const { data: profilesData, error: profilesError } = await supabase
       .from('profiles')
       .select('*');
-    
+
     if (profilesError) {
       console.error('Error fetching profiles:', profilesError);
     } else {
@@ -225,7 +225,7 @@ const Employees: React.FC = () => {
     const { data: paymentsData, error: paymentsError } = await supabase
       .from('employee_payments')
       .select('*');
-    
+
     if (paymentsError) {
       console.error('Error fetching payments:', paymentsError);
     } else {
@@ -247,7 +247,7 @@ const Employees: React.FC = () => {
       .from('worker_daily_payment_periods')
       .select('worker_id, start_date, end_date, total_days')
       .eq('status', 'paid');
-    
+
     if (periodsError) {
       console.error('Error fetching payment periods:', periodsError);
     } else {
@@ -264,7 +264,7 @@ const Employees: React.FC = () => {
     const { data: reservationWorkersData, error: reservationWorkersError } = await supabase
       .from('reservation_workers')
       .select('worker_id, amount, status, reservation_id');
-    
+
     if (reservationWorkersError) {
       console.error('Error fetching reservation workers - table may not exist:', reservationWorkersError);
       setReservationWorkerEarnings([]);
@@ -279,7 +279,7 @@ const Employees: React.FC = () => {
       console.log('Mapped reservation worker data:', mappedData);
       setReservationWorkerEarnings(mappedData);
     }
-    
+
     setIsLoading(false);
   };
 
@@ -334,7 +334,7 @@ const Employees: React.FC = () => {
         .from('profiles')
         .update(employeeData)
         .eq('id', editingEmployee.id);
-      
+
       if (error) {
         console.error('Error updating profile:', error);
         alert('Erreur lors de la mise à jour: ' + error.message);
@@ -349,7 +349,7 @@ const Employees: React.FC = () => {
         // Save current admin session before creating worker account
         const { data: { session: currentSession } } = await supabase.auth.getSession();
         const currentUser = currentSession?.user;
-        
+
         if (!currentUser) {
           alert('Erreur: Vous devez être connecté pour créer un employé');
           return;
@@ -363,9 +363,9 @@ const Employees: React.FC = () => {
           email: formData.email.toLowerCase().trim(),
           password: formData.password,
           options: {
-            data: { 
-              username: formData.username, 
-              full_name: formData.fullName 
+            data: {
+              username: formData.username,
+              full_name: formData.fullName
             },
             emailRedirectTo: `${window.location.origin}/login`
           }
@@ -373,7 +373,7 @@ const Employees: React.FC = () => {
 
         if (authError) {
           console.error('Error creating auth user:', authError);
-          
+
           // Handle specific error messages
           if (authError.message?.includes('already registered') || authError.message?.includes('already exists')) {
             alert('Erreur: Cet email est déjà utilisé. Veuillez utiliser un email différent.');
@@ -401,7 +401,7 @@ const Employees: React.FC = () => {
             ...employeeData,
             created_at: new Date().toISOString(),
           }]);
-        
+
         if (profileError) {
           console.error('Error creating profile:', profileError);
           alert('Erreur lors de la création du profil: ' + profileError.message);
@@ -422,7 +422,7 @@ const Employees: React.FC = () => {
         resetForm();
         fetchData();
         alert('Employé créé avec succès! L\'employé peut maintenant se connecter avec son email et mot de passe.');
-        
+
       } catch (error: any) {
         console.error('Error creating employee:', error);
         alert('Erreur: ' + error.message);
@@ -583,14 +583,14 @@ const Employees: React.FC = () => {
       console.warn('[DELETE] No employee selected for deletion');
       return;
     }
-    
+
     try {
       // Prevent double-clicks
       setIsDeletingId(deleteConfirm.id);
-      
+
       const employeeIdToDelete = deleteConfirm.id;
       console.log('[DELETE] Starting employee deletion:', employeeIdToDelete);
-      
+
       // First, delete all associated payments (in case CASCADE isn't set up)
       console.log('[DELETE] Deleting associated payments...');
       const { data: deletedPayments, error: paymentsError } = await supabase
@@ -600,7 +600,7 @@ const Employees: React.FC = () => {
         .select(); // Add select() to verify deletion
 
       console.log('[DELETE] Payments deletion response:', { data: deletedPayments, error: paymentsError });
-      
+
       if (paymentsError) {
         console.error('[DELETE ERROR] Failed to delete payments:', paymentsError);
         // Don't throw - continue with deletion even if payments delete fails
@@ -615,7 +615,7 @@ const Employees: React.FC = () => {
         .select(); // Add select() to verify deletion
 
       console.log('[DELETE] Workers deletion response:', { data: deletedWorkers, error: resWorkerError });
-      
+
       if (resWorkerError) {
         console.error('[DELETE ERROR] Failed to delete reservation workers:', resWorkerError);
         // Don't throw - continue with deletion even if workers delete fails
@@ -655,12 +655,12 @@ const Employees: React.FC = () => {
       }
 
       console.log('[DELETE SUCCESS] Employee and all related records deleted:', deletedProfile);
-      
+
       // Update local state immediately
       setEmployees(prev => prev.filter(emp => emp.id !== employeeIdToDelete));
       setPayments(prev => prev.filter(p => p.employeeId !== employeeIdToDelete));
       setReservationWorkerEarnings(prev => prev.filter(rw => rw.workerId !== employeeIdToDelete));
-      
+
       setDeleteConfirm(null);
       setIsDeletingId(null);
     } catch (error) {
@@ -676,7 +676,7 @@ const Employees: React.FC = () => {
 
   const handleAddPaymentAction = async () => {
     if (!paymentModal.employee) return;
-    
+
     const paymentData = {
       employee_id: paymentModal.employee.id,
       type: paymentModal.type,
@@ -723,7 +723,7 @@ const Employees: React.FC = () => {
 
     try {
       const employeeId = paymentModal.employee.id;
-      
+
       // Get current calculation details with custom days if provided
       const customDays = paymentModal.employee.paymentType === 'days' && dailyPaymentData.days ? parseInt(dailyPaymentData.days) : undefined;
       const details = paymentModal.employee.paymentType === 'percentage'
@@ -734,7 +734,7 @@ const Employees: React.FC = () => {
       const lastSalaryPayment = payments
         .filter(p => p.employeeId === employeeId && p.type === 'salary')
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
-      
+
       const lastPaymentDate = lastSalaryPayment ? new Date(lastSalaryPayment.date) : new Date('2000-01-01');
 
       // Get unpaid acomptes and absences created on or after the last salary payment
@@ -801,12 +801,12 @@ const Employees: React.FC = () => {
         const lastSalaryPayment = payments
           .filter(p => p.employeeId === employeeId && p.type === 'salary')
           .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
-        
+
         const lastPaidDate = lastSalaryPayment ? lastSalaryPayment.date : employee?.hireDate;
         const startDate = lastPaidDate ? new Date(new Date(lastPaidDate).getTime() + 1000 * 60 * 60 * 24) : parseDateString(employee?.hireDate || '');
         const endDate = new Date();
         const daysCount = customDays || details.days;
-        
+
         const periodRecord = {
           worker_id: employeeId,
           start_date: startDate.toISOString().split('T')[0],
@@ -818,11 +818,11 @@ const Employees: React.FC = () => {
           status: 'paid',
           description: description
         };
-        
+
         const { error: periodError, data: periodData } = await supabase
           .from('worker_daily_payment_periods')
           .insert([periodRecord]);
-        
+
         if (periodError) {
           console.error('Error recording daily payment period:', periodError);
           // Don't fail the whole operation, just log it
@@ -841,7 +841,7 @@ const Employees: React.FC = () => {
 
       // Mark all unpaid deductions as paid - use a batch update if possible
       let updateCount = 0;
-      
+
       // Try batch update first
       if (unpaidDeductions.length > 0) {
         const deductionIds = unpaidDeductions.map(d => d.id);
@@ -879,7 +879,7 @@ const Employees: React.FC = () => {
         const unpaidReservationEarnings = reservationWorkerEarnings.filter(
           rw => rw.workerId === employeeId && rw.status === 'unpaid'
         );
-        
+
         if (unpaidReservationEarnings.length > 0) {
           const reservationIds = unpaidReservationEarnings.map(rw => rw.reservationId);
           const { error: reservationUpdateError } = await supabase
@@ -887,7 +887,7 @@ const Employees: React.FC = () => {
             .update({ status: 'paid' })
             .eq('worker_id', employeeId)
             .in('reservation_id', reservationIds);
-          
+
           if (reservationUpdateError) {
             console.error('Error marking reservation worker earnings as paid:', reservationUpdateError);
           } else {
@@ -904,14 +904,14 @@ const Employees: React.FC = () => {
         }
         return p;
       });
-      
+
       setPayments(updatedPayments);
 
       // Update reservation worker earnings locally
       if (paymentModal.employee.paymentType === 'percentage') {
-        setReservationWorkerEarnings(prevEarnings => 
-          prevEarnings.map(rw => 
-            rw.workerId === employeeId && rw.status === 'unpaid' 
+        setReservationWorkerEarnings(prevEarnings =>
+          prevEarnings.map(rw =>
+            rw.workerId === employeeId && rw.status === 'unpaid'
               ? { ...rw, status: 'paid' as const }
               : rw
           )
@@ -921,7 +921,7 @@ const Employees: React.FC = () => {
       setPaymentModal({ isOpen: false, employee: null, type: 'acompte' });
       setDailyPaymentData({ days: '', date: new Date().toISOString().split('T')[0] });
       setDateRangeOverride({ lastPaymentDate: '', currentDate: new Date().toISOString().split('T')[0] });
-     
+
     } catch (error) {
       console.error('Error during payment validation:', error);
       alert('Une erreur s\'est produite lors de la validation du paiement');
@@ -947,9 +947,9 @@ const Employees: React.FC = () => {
 
       // Update payments state immediately without waiting for fetchData
       setPayments(prevPayments => prevPayments.filter(p => p.id !== paymentId));
-      
+
       alert('Supprimé avec succès!');
-      
+
       // Optionally refresh in background
       fetchData().catch(err => console.error('Error refreshing data after delete:', err));
     } catch (error) {
@@ -962,7 +962,7 @@ const Employees: React.FC = () => {
   const loadJournalierReservations = async (workerId: string) => {
     try {
       console.log('Loading journalier reservations for worker:', workerId);
-      
+
       // Query reservation_workers entries for this worker with status='unpaid' only
       const { data: existingData, error: existingError } = await supabase
         .from('reservation_workers')
@@ -1121,13 +1121,13 @@ const Employees: React.FC = () => {
       console.log('All completed reservations:', completedData);
 
       const matchesSearch = (clientName: string, clientPhone: string) => {
-        return clientName.toLowerCase().includes(searchLower) || 
-               clientPhone.toLowerCase().includes(searchLower);
+        return clientName.toLowerCase().includes(searchLower) ||
+          clientPhone.toLowerCase().includes(searchLower);
       };
 
       // Process unpaid reservation_workers results - filter by search term
       const fromReservationWorkers = (rwData || [])
-        .filter((rw: any) => 
+        .filter((rw: any) =>
           matchesSearch(
             rw.reservations?.client_name || '',
             rw.reservations?.client_phone || ''
@@ -1146,7 +1146,7 @@ const Employees: React.FC = () => {
       // Completed reservations not yet tracked at all
       const fromCompleted = (completedData || [])
         .filter((res: any) => !trackedReservationIds.has(res.id)) // Not yet in reservation_workers
-        .filter((res: any) => 
+        .filter((res: any) =>
           matchesSearch(
             res.client_name || '',
             res.client_phone || ''
@@ -1182,7 +1182,7 @@ const Employees: React.FC = () => {
   const toggleReservationSelection = (reservationId: string) => {
     setJournalierPaymentMode(prev => {
       const isSelected = prev.selectedReservationIds.includes(reservationId);
-      const newSelected = isSelected 
+      const newSelected = isSelected
         ? prev.selectedReservationIds.filter(id => id !== reservationId)
         : [...prev.selectedReservationIds, reservationId];
 
@@ -1201,7 +1201,7 @@ const Employees: React.FC = () => {
 
   const calculateJournalierPayment = () => {
     const { totalAmount, usePercentage, paymentPercentage } = journalierPaymentMode;
-    
+
     if (usePercentage && paymentPercentage) {
       const percentage = parseFloat(paymentPercentage);
       return (totalAmount * percentage) / 100;
@@ -1216,7 +1216,7 @@ const Employees: React.FC = () => {
       return;
     }
 
-    const finalAmount = journalierPaymentMode.usePercentage 
+    const finalAmount = journalierPaymentMode.usePercentage
       ? calculateJournalierPayment()
       : parseFloat(journalierPaymentMode.paymentAmount || '0');
 
@@ -1293,8 +1293,7 @@ const Employees: React.FC = () => {
 
       if (paymentError) throw paymentError;
 
-      alert(`Paiement de ${formatCurrency(finalAmount)} enregistré avec succès`);
-      
+
       // Close the payment interface and reset
       setPaymentModal({ isOpen: false, employee: null, type: 'acompte' });
       setJournalierPaymentMode({
@@ -1320,12 +1319,12 @@ const Employees: React.FC = () => {
   const calculateNetSalary = (employeeId: string, customDays?: number) => {
     // Get the actual employee to fetch their real salary amount
     const employee = employees.find(emp => emp.id === employeeId);
-    
+
     // Use the real amount based on payment type
     let baseSalary = 0;
     let actualDays = 0;
     let calculationStartDate = new Date();
-    
+
     if (employee?.paymentType === 'days' && employee?.dailyRate) {
       // Calculate days from last paid period or hire date to current date
       if (customDays !== undefined) {
@@ -1334,7 +1333,7 @@ const Employees: React.FC = () => {
         // Get the last paid period for this worker
         const workerPaidPeriods = paidPeriods.filter(p => p.workerId === employeeId);
         let startDate: Date;
-        
+
         if (workerPaidPeriods.length > 0) {
           // Get the most recent paid period
           const lastPaidPeriod = workerPaidPeriods.reduce((latest, current) => {
@@ -1352,21 +1351,21 @@ const Employees: React.FC = () => {
           startDate = employee.hireDate ? parseDateString(employee.hireDate) : new Date();
           calculationStartDate = startDate;
         }
-        
+
         // Get the actual current date from system (without time component)
         const currentDate = new Date();
         currentDate.setHours(0, 0, 0, 0);
-        
+
         // Count days between start date and today (inclusive of start date, inclusive of today)
         let daysCount = 0;
         const loopDate = new Date(startDate);
         loopDate.setHours(0, 0, 0, 0);
-        
+
         while (loopDate <= currentDate) {
           daysCount++;
           loopDate.setDate(loopDate.getDate() + 1);
         }
-        
+
         actualDays = daysCount;
       }
       baseSalary = employee.dailyRate * actualDays;
@@ -1375,17 +1374,17 @@ const Employees: React.FC = () => {
     } else {
       baseSalary = 0;
     }
-    
+
     // Get the date of the last salary payment to only count new deductions after that
     const lastSalaryPayment = payments
       .filter(p => p.employeeId === employeeId && p.type === 'salary')
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
-    
+
     const lastPaymentDate = lastSalaryPayment ? new Date(lastSalaryPayment.date) : new Date('2000-01-01');
-    
+
     // Only include UNPAID acomptes and absences created on or after the last salary payment
-    const empPayments = payments.filter(p => 
-      p.employeeId === employeeId && 
+    const empPayments = payments.filter(p =>
+      p.employeeId === employeeId &&
       (p.type === 'acompte' || p.type === 'absence') &&
       new Date(p.date) >= lastPaymentDate &&
       (p.status === 'unpaid' || !p.status) // Include unpaid or those without status (backwards compatibility)
@@ -1406,11 +1405,11 @@ const Employees: React.FC = () => {
     // For percentage workers, calculate earnings based on commission from reservations
     const employee = employees.find(emp => emp.id === employeeId);
     const empPayments = payments.filter(p => p.employeeId === employeeId && p.type === 'salary');
-    
+
     // Get the date of the last salary payment to only count new deductions on or after that
     const lastSalaryPayment = empPayments.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
     const lastPaymentDate = lastSalaryPayment ? new Date(lastSalaryPayment.date) : new Date('2000-01-01');
-    
+
     // Only include UNPAID deductions created on or after the last salary payment
     const deductions = payments.filter(p =>
       p.employeeId === employeeId &&
@@ -1418,21 +1417,21 @@ const Employees: React.FC = () => {
       new Date(p.date) >= lastPaymentDate &&
       (p.status === 'unpaid' || !p.status) // Include unpaid or those without status
     );
-    
+
     const totalDeductions = deductions.reduce((sum, p) => sum + p.amount, 0);
-    
+
     // Calculate earnings from reservation work (unpaid only)
     const allWorksForEmployee = reservationWorkerEarnings.filter(rw => rw.workerId === employeeId);
     const unpaidWorksForEmployee = allWorksForEmployee.filter(rw => rw.status === 'unpaid');
     const reservationEarnings = unpaidWorksForEmployee.reduce((sum, rw) => sum + rw.amount, 0);
-    
+
     console.log(`calculatePercentageEarnings for employee ${employeeId}:`, {
       allWorks: allWorksForEmployee,
       unpaidWorks: unpaidWorksForEmployee,
       totalEarnings: reservationEarnings,
       allReservationWorkerEarnings: reservationWorkerEarnings
     });
-    
+
     return {
       base: reservationEarnings,
       total: reservationEarnings,
@@ -1452,7 +1451,7 @@ const Employees: React.FC = () => {
           <h2 className="text-4xl font-serif font-bold text-ink tracking-tight">Employés</h2>
           <p className="text-ink/40 mt-2 font-medium">Gérez votre équipe, leurs rôles et leurs rémunérations</p>
         </div>
-        <button 
+        <button
           onClick={() => { resetForm(); setEditingEmployee(null); setIsModalOpen(true); }}
           className="btn-gradient shimmer flex items-center gap-2.5 px-8 py-3"
         >
@@ -1463,8 +1462,8 @@ const Employees: React.FC = () => {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
         {employees.map((emp, idx) => (
-          <motion.div 
-            key={emp.id} 
+          <motion.div
+            key={emp.id}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: idx * 0.1 }}
@@ -1514,33 +1513,33 @@ const Employees: React.FC = () => {
                   <DollarSign size={16} />
                 </div>
                 <span>Rémunération: <span className="text-accent font-bold">{
-                  emp.paymentType === 'percentage' ? `${emp.percentage}%` : 
-                  emp.paymentType === 'month' ? formatCurrency(emp.monthlyRate || 0) + ' /mois' : 
-                  'Paiement à la journée'
+                  emp.paymentType === 'percentage' ? `${emp.percentage}%` :
+                    emp.paymentType === 'month' ? formatCurrency(emp.monthlyRate || 0) + ' /mois' :
+                      'Paiement à la journée'
                 }</span></span>
               </div>
             </div>
 
             <div className="grid grid-cols-4 gap-2 mb-6">
-              <button 
+              <button
                 onClick={() => openHistoryModal(emp)}
                 className="flex flex-col items-center gap-1 p-2 rounded-xl bg-primary-bg hover:bg-blue-50 text-ink/60 hover:text-blue-500 transition-all text-[10px] font-bold uppercase tracking-wider"
               >
                 <History size={16} /> Historique
               </button>
-              <button 
+              <button
                 onClick={() => { setPaymentModal({ isOpen: true, employee: emp, type: 'acompte' }); setPaymentFormData({ amount: '', description: '', date: new Date().toISOString().split('T')[0] }); setDateRangeOverride({ lastPaymentDate: '', currentDate: new Date().toISOString().split('T')[0] }); }}
                 className="flex flex-col items-center gap-1 p-2 rounded-xl bg-primary-bg hover:bg-accent/10 text-ink/60 hover:text-accent transition-all text-[10px] font-bold uppercase tracking-wider"
               >
                 <PlusCircle size={16} /> Acompte
               </button>
-              <button 
+              <button
                 onClick={() => { setPaymentModal({ isOpen: true, employee: emp, type: 'absence' }); setPaymentFormData({ amount: '', description: '', date: new Date().toISOString().split('T')[0] }); setDateRangeOverride({ lastPaymentDate: '', currentDate: new Date().toISOString().split('T')[0] }); }}
                 className="flex flex-col items-center gap-1 p-2 rounded-xl bg-primary-bg hover:bg-red-50 text-ink/60 hover:text-red-500 transition-all text-[10px] font-bold uppercase tracking-wider"
               >
                 <MinusCircle size={16} /> Absence
               </button>
-              <button 
+              <button
                 onClick={() => {
                   if (emp.paymentType === 'days') {
                     // For journalier workers, load their reservations
@@ -1560,13 +1559,13 @@ const Employees: React.FC = () => {
             </div>
 
             <div className="pt-6 border-t border-border flex gap-3">
-              <button 
+              <button
                 onClick={() => openEditModal(emp)}
                 className="flex-1 py-3 rounded-xl bg-primary-bg text-ink/60 font-bold text-xs hover:bg-accent hover:text-white transition-all duration-300 flex items-center justify-center gap-2 shadow-sm"
               >
                 <Edit2 size={16} /> Modifier
               </button>
-              <button 
+              <button
                 onClick={() => setDeleteConfirm({ isOpen: true, id: emp.id, name: emp.fullName })}
                 disabled={isDeletingId === emp.id}
                 className="p-3 rounded-xl bg-red-50 text-red-400 hover:bg-red-500 hover:text-white transition-all duration-300 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
@@ -1582,14 +1581,14 @@ const Employees: React.FC = () => {
       <AnimatePresence mode="wait">
         {paymentModal.isOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => { setPaymentModal({ isOpen: false, employee: null, type: 'acompte' }); setDailyPaymentData({ days: '', date: new Date().toISOString().split('T')[0] }); setDateRangeOverride({ lastPaymentDate: '', currentDate: new Date().toISOString().split('T')[0] }); }}
               className="fixed inset-0 bg-ink/60 backdrop-blur-sm"
             />
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -1598,9 +1597,9 @@ const Employees: React.FC = () => {
               <div className="p-5 md:p-8 overflow-y-auto custom-scrollbar">
                 <div className="flex justify-between items-center mb-6">
                   <h3 className="text-xl md:text-2xl font-serif font-bold text-ink tracking-tight">
-                    {paymentModal.type === 'acompte' ? 'Nouvel Acompte' : 
-                     paymentModal.type === 'absence' ? 'Nouvelle Absence' : 
-                     'Calcul du Paiement'}
+                    {paymentModal.type === 'acompte' ? 'Nouvel Acompte' :
+                      paymentModal.type === 'absence' ? 'Nouvelle Absence' :
+                        'Calcul du Paiement'}
                   </h3>
                   <button onClick={() => { setPaymentModal({ isOpen: false, employee: null, type: 'acompte' }); setDailyPaymentData({ days: '', date: new Date().toISOString().split('T')[0] }); setDateRangeOverride({ lastPaymentDate: '', currentDate: new Date().toISOString().split('T')[0] }); }} className="p-2 rounded-xl hover:bg-primary-bg text-ink/20 hover:text-ink transition-all">
                     <X size={24} />
@@ -1770,10 +1769,10 @@ const Employees: React.FC = () => {
                     {(() => {
                       const employee = paymentModal.employee!;
                       const customDays = employee.paymentType === 'days' && dailyPaymentData.days ? parseInt(dailyPaymentData.days) : undefined;
-                      const details = employee.paymentType === 'percentage' 
+                      const details = employee.paymentType === 'percentage'
                         ? calculatePercentageEarnings(employee.id)
                         : calculateNetSalary(employee.id, customDays);
-                      
+
                       return (
                         <>
                           {employee.paymentType === 'days' && (
@@ -1785,7 +1784,7 @@ const Employees: React.FC = () => {
                                   {(() => {
                                     const workerPaidPeriods = paidPeriods.filter(p => p.workerId === employee.id);
                                     let lastPaymentDate: Date | null = null;
-                                    
+
                                     if (workerPaidPeriods.length > 0) {
                                       const lastPaidPeriod = workerPaidPeriods.reduce((latest, current) => {
                                         const latestEnd = parseDateString(latest.endDate);
@@ -1802,16 +1801,16 @@ const Employees: React.FC = () => {
                                         lastPaymentDate = new Date(lastSalaryPayment.date);
                                       }
                                     }
-                                    
+
                                     // Use override dates if set, otherwise use calculated dates
-                                    const displayLastPaymentDate = dateRangeOverride.lastPaymentDate 
+                                    const displayLastPaymentDate = dateRangeOverride.lastPaymentDate
                                       ? new Date(parseDateString(dateRangeOverride.lastPaymentDate))
                                       : lastPaymentDate;
-                                    
-                                    const displayCurrentDate = dateRangeOverride.currentDate 
+
+                                    const displayCurrentDate = dateRangeOverride.currentDate
                                       ? new Date(parseDateString(dateRangeOverride.currentDate))
                                       : new Date();
-                                    
+
                                     // Calculate days between last payment and current date
                                     let daysBetween = 0;
                                     if (displayLastPaymentDate) {
@@ -1819,30 +1818,30 @@ const Employees: React.FC = () => {
                                       tempDate.setHours(0, 0, 0, 0);
                                       const currentDateNormalized = new Date(displayCurrentDate);
                                       currentDateNormalized.setHours(0, 0, 0, 0);
-                                      
+
                                       // Get the earlier and later dates
                                       const earlierDate = tempDate <= currentDateNormalized ? tempDate : currentDateNormalized;
                                       const laterDate = tempDate > currentDateNormalized ? tempDate : currentDateNormalized;
-                                      
+
                                       // Count days from earlier to later date (inclusive)
                                       let loopDate = new Date(earlierDate);
                                       while (loopDate <= laterDate) {
                                         daysBetween++;
                                         loopDate.setDate(loopDate.getDate() + 1);
                                       }
-                                      
+
                                       // Don't count the first day, only count from day after
                                       daysBetween = daysBetween > 0 ? daysBetween - 1 : 0;
                                     }
-                                    
+
                                     return (
                                       <div className="space-y-2">
                                         <div className="space-y-1">
                                           <label className="text-[10px] font-bold text-blue-600 uppercase tracking-widest">Dernière paie le</label>
-                                          <input 
+                                          <input
                                             type="date"
                                             value={dateRangeOverride.lastPaymentDate || (lastPaymentDate ? lastPaymentDate.toISOString().split('T')[0] : '')}
-                                            onChange={e => setDateRangeOverride({...dateRangeOverride, lastPaymentDate: e.target.value})}
+                                            onChange={e => setDateRangeOverride({ ...dateRangeOverride, lastPaymentDate: e.target.value })}
                                             className="w-full input-premium text-xs"
                                           />
                                           {lastPaymentDate && !dateRangeOverride.lastPaymentDate && (
@@ -1851,10 +1850,10 @@ const Employees: React.FC = () => {
                                         </div>
                                         <div className="space-y-1">
                                           <label className="text-[10px] font-bold text-blue-600 uppercase tracking-widest">Date actuelle</label>
-                                          <input 
+                                          <input
                                             type="date"
                                             value={dateRangeOverride.currentDate}
-                                            onChange={e => setDateRangeOverride({...dateRangeOverride, currentDate: e.target.value})}
+                                            onChange={e => setDateRangeOverride({ ...dateRangeOverride, currentDate: e.target.value })}
                                             className="w-full input-premium text-xs"
                                           />
                                         </div>
@@ -1865,11 +1864,11 @@ const Employees: React.FC = () => {
                                 </div>
                                 <div className="space-y-1">
                                   <label className="text-xs font-bold text-blue-600 uppercase tracking-widest">Nombre de jours</label>
-                                  <input 
-                                    type="number" 
+                                  <input
+                                    type="number"
                                     value={dailyPaymentData.days}
-                                    onChange={e => setDailyPaymentData({...dailyPaymentData, days: e.target.value})}
-                                    className="w-full input-premium" 
+                                    onChange={e => setDailyPaymentData({ ...dailyPaymentData, days: e.target.value })}
+                                    className="w-full input-premium"
                                     placeholder={`${details.days} jours`}
                                   />
                                   {!dailyPaymentData.days && <p className="text-[10px] text-blue-500 italic">Par défaut: {details.days} jours (du {details.calculationStartDate ? details.calculationStartDate.toLocaleDateString('fr-FR') : 'N/A'} à aujourd'hui)</p>}
@@ -1892,7 +1891,7 @@ const Employees: React.FC = () => {
                                   {(() => {
                                     const workerPaidPeriods = paidPeriods.filter(p => p.workerId === employee.id);
                                     let lastPaymentDate: Date | null = null;
-                                    
+
                                     if (workerPaidPeriods.length > 0) {
                                       const lastPaidPeriod = workerPaidPeriods.reduce((latest, current) => {
                                         const latestEnd = parseDateString(latest.endDate);
@@ -1909,16 +1908,16 @@ const Employees: React.FC = () => {
                                         lastPaymentDate = new Date(lastSalaryPayment.date);
                                       }
                                     }
-                                    
+
                                     // Use override dates if set, otherwise use calculated dates
-                                    const displayLastPaymentDate = dateRangeOverride.lastPaymentDate 
+                                    const displayLastPaymentDate = dateRangeOverride.lastPaymentDate
                                       ? new Date(parseDateString(dateRangeOverride.lastPaymentDate))
                                       : lastPaymentDate;
-                                    
-                                    const displayCurrentDate = dateRangeOverride.currentDate 
+
+                                    const displayCurrentDate = dateRangeOverride.currentDate
                                       ? new Date(parseDateString(dateRangeOverride.currentDate))
                                       : new Date();
-                                    
+
                                     // Calculate days between last payment and current date
                                     let daysBetween = 0;
                                     if (displayLastPaymentDate) {
@@ -1926,30 +1925,30 @@ const Employees: React.FC = () => {
                                       tempDate.setHours(0, 0, 0, 0);
                                       const currentDateNormalized = new Date(displayCurrentDate);
                                       currentDateNormalized.setHours(0, 0, 0, 0);
-                                      
+
                                       // Get the earlier and later dates
                                       const earlierDate = tempDate <= currentDateNormalized ? tempDate : currentDateNormalized;
                                       const laterDate = tempDate > currentDateNormalized ? tempDate : currentDateNormalized;
-                                      
+
                                       // Count days from earlier to later date (inclusive)
                                       let loopDate = new Date(earlierDate);
                                       while (loopDate <= laterDate) {
                                         daysBetween++;
                                         loopDate.setDate(loopDate.getDate() + 1);
                                       }
-                                      
+
                                       // Don't count the first day, only count from day after
                                       daysBetween = daysBetween > 0 ? daysBetween - 1 : 0;
                                     }
-                                    
+
                                     return (
                                       <div className="space-y-2">
                                         <div className="space-y-1">
                                           <label className="text-[10px] font-bold text-green-600 uppercase tracking-widest">Dernière paie le</label>
-                                          <input 
+                                          <input
                                             type="date"
                                             value={dateRangeOverride.lastPaymentDate || (lastPaymentDate ? lastPaymentDate.toISOString().split('T')[0] : '')}
-                                            onChange={e => setDateRangeOverride({...dateRangeOverride, lastPaymentDate: e.target.value})}
+                                            onChange={e => setDateRangeOverride({ ...dateRangeOverride, lastPaymentDate: e.target.value })}
                                             className="w-full input-premium text-xs"
                                           />
                                           {lastPaymentDate && !dateRangeOverride.lastPaymentDate && (
@@ -1958,10 +1957,10 @@ const Employees: React.FC = () => {
                                         </div>
                                         <div className="space-y-1">
                                           <label className="text-[10px] font-bold text-green-600 uppercase tracking-widest">Date actuelle</label>
-                                          <input 
+                                          <input
                                             type="date"
                                             value={dateRangeOverride.currentDate}
-                                            onChange={e => setDateRangeOverride({...dateRangeOverride, currentDate: e.target.value})}
+                                            onChange={e => setDateRangeOverride({ ...dateRangeOverride, currentDate: e.target.value })}
                                             className="w-full input-premium text-xs"
                                           />
                                         </div>
@@ -1979,7 +1978,7 @@ const Employees: React.FC = () => {
                             </span>
                             <span className="font-serif font-bold text-lg text-ink">{formatCurrency(details.base)}</span>
                           </div>
-                          
+
                           {/* Show works breakdown for percentage workers */}
                           {employee.paymentType === 'percentage' && (
                             <div className="p-4 bg-accent/5 rounded-2xl border border-accent/20">
@@ -2004,7 +2003,7 @@ const Employees: React.FC = () => {
                               </div>
                             </div>
                           )}
-                          
+
                           <div className="flex justify-between items-center p-4 bg-red-50/50 rounded-2xl border border-red-100/50">
                             <span className="text-sm text-red-500/60 font-medium">Total Acomptes</span>
                             <span className="font-serif font-bold text-lg text-red-500">-{formatCurrency(details.acomptes)}</span>
@@ -2017,7 +2016,7 @@ const Employees: React.FC = () => {
                             <span className="font-serif font-bold text-xl text-ink">Net à payer</span>
                             <span className="text-3xl font-serif font-bold text-accent tracking-tight">{formatCurrency(details.net)}</span>
                           </div>
-                          <button 
+                          <button
                             onClick={handleValidatePayment}
                             className="w-full btn-gradient shimmer mt-8 py-4 flex items-center justify-center gap-3"
                           >
@@ -2029,7 +2028,7 @@ const Employees: React.FC = () => {
                   </div>
                 ) : paymentModal.type === 'payment' && paymentModal.employee?.paymentType === 'days' && journalierPaymentMode.isActive ? (
                   <div className="flex gap-4 pt-8">
-                    <button 
+                    <button
                       onClick={() => {
                         setPaymentModal({ isOpen: false, employee: null, type: 'acompte' });
                         setJournalierPaymentMode({
@@ -2048,7 +2047,7 @@ const Employees: React.FC = () => {
                     >
                       Annuler
                     </button>
-                    <button 
+                    <button
                       onClick={saveJournalierPayment}
                       disabled={journalierPaymentMode.selectedReservationIds.length === 0 || (!journalierPaymentMode.paymentAmount && !journalierPaymentMode.paymentPercentage)}
                       className="flex-1 btn-gradient shimmer py-4 rounded-2xl font-bold disabled:opacity-50 flex items-center justify-center gap-2"
@@ -2062,33 +2061,33 @@ const Employees: React.FC = () => {
                       <label className="text-[10px] font-bold text-ink/30 uppercase tracking-widest ml-1">
                         {paymentModal.type === 'acompte' ? 'Montant de l\'acompte (DA)' : 'Coût de l\'absence (DA)'}
                       </label>
-                      <input 
-                        type="number" 
+                      <input
+                        type="number"
                         value={paymentFormData.amount}
-                        onChange={e => setPaymentFormData({...paymentFormData, amount: e.target.value})}
-                        className="w-full input-premium" 
-                        placeholder="0.00 DA" 
+                        onChange={e => setPaymentFormData({ ...paymentFormData, amount: e.target.value })}
+                        className="w-full input-premium"
+                        placeholder="0.00 DA"
                       />
                     </div>
                     <div className="space-y-2">
                       <label className="text-[10px] font-bold text-ink/30 uppercase tracking-widest ml-1">Date</label>
-                      <input 
-                        type="date" 
+                      <input
+                        type="date"
                         value={paymentFormData.date}
-                        onChange={e => setPaymentFormData({...paymentFormData, date: e.target.value})}
-                        className="w-full input-premium" 
+                        onChange={e => setPaymentFormData({ ...paymentFormData, date: e.target.value })}
+                        className="w-full input-premium"
                       />
                     </div>
                     <div className="space-y-2">
                       <label className="text-[10px] font-bold text-ink/30 uppercase tracking-widest ml-1">Description / Motif</label>
-                      <textarea 
+                      <textarea
                         value={paymentFormData.description}
-                        onChange={e => setPaymentFormData({...paymentFormData, description: e.target.value})}
-                        className="w-full input-premium h-32 pt-4" 
+                        onChange={e => setPaymentFormData({ ...paymentFormData, description: e.target.value })}
+                        className="w-full input-premium h-32 pt-4"
                         placeholder="Détails..."
                       ></textarea>
                     </div>
-                    <button 
+                    <button
                       onClick={handleAddPaymentAction}
                       disabled={!paymentFormData.amount}
                       className="w-full btn-gradient py-4 disabled:opacity-50"
@@ -2107,14 +2106,14 @@ const Employees: React.FC = () => {
       <AnimatePresence mode="wait">
         {isModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto">
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setIsModalOpen(false)}
               className="fixed inset-0 bg-ink/60 backdrop-blur-sm"
             />
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -2135,11 +2134,11 @@ const Employees: React.FC = () => {
                     <label className="text-[10px] font-bold uppercase tracking-widest text-ink/30 ml-1">Nom Complet</label>
                     <div className="relative">
                       <User className="absolute left-4 top-1/2 -translate-y-1/2 text-ink/20" size={18} />
-                      <input 
-                        type="text" 
+                      <input
+                        type="text"
                         value={formData.fullName}
-                        onChange={e => setFormData({...formData, fullName: e.target.value})}
-                        className="w-full input-premium pl-12" 
+                        onChange={e => setFormData({ ...formData, fullName: e.target.value })}
+                        className="w-full input-premium pl-12"
                         placeholder="Prénom Nom"
                       />
                     </div>
@@ -2148,11 +2147,11 @@ const Employees: React.FC = () => {
                     <label className="text-[10px] font-bold uppercase tracking-widest text-ink/30 ml-1">Téléphone</label>
                     <div className="relative">
                       <Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-ink/20" size={18} />
-                      <input 
-                        type="text" 
+                      <input
+                        type="text"
                         value={formData.phone}
-                        onChange={e => setFormData({...formData, phone: e.target.value})}
-                        className="w-full input-premium pl-12" 
+                        onChange={e => setFormData({ ...formData, phone: e.target.value })}
+                        className="w-full input-premium pl-12"
                         placeholder="05..."
                       />
                     </div>
@@ -2161,20 +2160,20 @@ const Employees: React.FC = () => {
                     <label className="text-[10px] font-bold uppercase tracking-widest text-ink/30 ml-1">Adresse</label>
                     <div className="relative">
                       <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-ink/20" size={18} />
-                      <input 
-                        type="text" 
+                      <input
+                        type="text"
                         value={formData.address}
-                        onChange={e => setFormData({...formData, address: e.target.value})}
-                        className="w-full input-premium pl-12" 
+                        onChange={e => setFormData({ ...formData, address: e.target.value })}
+                        className="w-full input-premium pl-12"
                         placeholder="Adresse complète"
                       />
                     </div>
                   </div>
                   <div className="space-y-2">
                     <label className="text-[10px] font-bold uppercase tracking-widest text-ink/30 ml-1">Poste</label>
-                    <select 
+                    <select
                       value={formData.role}
-                      onChange={e => setFormData({...formData, role: e.target.value as any})}
+                      onChange={e => setFormData({ ...formData, role: e.target.value as any })}
                       className="w-full input-premium"
                     >
                       <option value="worker">Employé (Worker)</option>
@@ -2183,9 +2182,9 @@ const Employees: React.FC = () => {
                   </div>
                   <div className="space-y-2">
                     <label className="text-[10px] font-bold uppercase tracking-widest text-ink/30 ml-1">Type de Paiement</label>
-                    <select 
+                    <select
                       value={formData.paymentType}
-                      onChange={e => setFormData({...formData, paymentType: e.target.value as any})}
+                      onChange={e => setFormData({ ...formData, paymentType: e.target.value as any })}
                       className="w-full input-premium"
                     >
                       <option value="month">Mensuel</option>
@@ -2197,11 +2196,11 @@ const Employees: React.FC = () => {
                       <label className="text-[10px] font-bold uppercase tracking-widest text-ink/30 ml-1">Salaire Mensuel (DA)</label>
                       <div className="relative">
                         <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 text-ink/20" size={18} />
-                        <input 
-                          type="number" 
+                        <input
+                          type="number"
                           value={formData.monthlyRate}
-                          onChange={e => setFormData({...formData, monthlyRate: e.target.value})}
-                          className="w-full input-premium pl-12" 
+                          onChange={e => setFormData({ ...formData, monthlyRate: e.target.value })}
+                          className="w-full input-premium pl-12"
                           placeholder="Ex: 60000"
                         />
                       </div>
@@ -2212,25 +2211,25 @@ const Employees: React.FC = () => {
                     <label className="text-[10px] font-bold uppercase tracking-widest text-ink/30 ml-1">Date d'embauche</label>
                     <div className="relative">
                       <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-ink/20" size={18} />
-                      <input 
-                        type="date" 
+                      <input
+                        type="date"
                         value={formData.hireDate}
-                        onChange={e => setFormData({...formData, hireDate: e.target.value})}
+                        onChange={e => setFormData({ ...formData, hireDate: e.target.value })}
                         className="w-full input-premium pl-12"
                       />
                     </div>
                   </div>
-                  
+
                   <div className="md:col-span-2 pt-4 border-t border-border">
                     <h4 className="text-sm font-bold text-ink/40 mb-4">Informations de connexion</h4>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div className="space-y-2">
                         <label className="text-[10px] font-bold uppercase tracking-widest text-ink/30 ml-1">Nom d'utilisateur</label>
-                        <input 
-                          type="text" 
+                        <input
+                          type="text"
                           value={formData.username}
-                          onChange={e => setFormData({...formData, username: e.target.value})}
-                          className="w-full input-premium" 
+                          onChange={e => setFormData({ ...formData, username: e.target.value })}
+                          className="w-full input-premium"
                           placeholder="username"
                         />
                       </div>
@@ -2238,11 +2237,11 @@ const Employees: React.FC = () => {
                         <label className="text-[10px] font-bold uppercase tracking-widest text-ink/30 ml-1">Email</label>
                         <div className="relative">
                           <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-ink/20" size={18} />
-                          <input 
-                            type="email" 
+                          <input
+                            type="email"
                             value={formData.email}
-                            onChange={e => setFormData({...formData, email: e.target.value})}
-                            className="w-full input-premium pl-12" 
+                            onChange={e => setFormData({ ...formData, email: e.target.value })}
+                            className="w-full input-premium pl-12"
                             placeholder="email@salon.dz"
                           />
                         </div>
@@ -2251,11 +2250,11 @@ const Employees: React.FC = () => {
                         <label className="text-[10px] font-bold uppercase tracking-widest text-ink/30 ml-1">Mot de passe</label>
                         <div className="relative">
                           <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-ink/20" size={18} />
-                          <input 
-                            type="password" 
+                          <input
+                            type="password"
                             value={formData.password}
-                            onChange={e => setFormData({...formData, password: e.target.value})}
-                            className="w-full input-premium pl-12" 
+                            onChange={e => setFormData({ ...formData, password: e.target.value })}
+                            className="w-full input-premium pl-12"
                             placeholder="••••••••"
                           />
                         </div>
@@ -2266,7 +2265,7 @@ const Employees: React.FC = () => {
 
                 <div className="flex gap-4 pt-4">
                   <button onClick={() => setIsModalOpen(false)} className="flex-1 py-4 rounded-2xl bg-white border border-border font-bold text-ink/40 hover:text-ink transition-all">Annuler</button>
-                  <button 
+                  <button
                     onClick={handleSaveEmployee}
                     className="flex-1 btn-gradient shimmer py-4 rounded-2xl font-bold flex items-center justify-center gap-2"
                   >
@@ -2283,14 +2282,14 @@ const Employees: React.FC = () => {
       <AnimatePresence mode="wait">
         {deleteConfirm?.isOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setDeleteConfirm(null)}
               className="absolute inset-0 bg-ink/60 backdrop-blur-sm"
             />
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -2308,7 +2307,7 @@ const Employees: React.FC = () => {
                 </div>
                 <div className="flex gap-4 pt-4">
                   <button onClick={(e) => { e.stopPropagation(); setDeleteConfirm(null); }} className="flex-1 py-4 rounded-2xl bg-white border border-border font-bold text-ink/40 hover:text-ink transition-all">Annuler</button>
-                  <button 
+                  <button
                     onClick={(e) => { e.stopPropagation(); handleDeleteEmployee(); }}
                     disabled={isDeletingId === deleteConfirm?.id}
                     className="flex-1 py-4 rounded-2xl bg-red-500 text-white font-bold hover:bg-red-600 transition-all shadow-lg shadow-red-500/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
@@ -2333,14 +2332,14 @@ const Employees: React.FC = () => {
       <AnimatePresence mode="wait">
         {historyModal.isOpen && historyModal.employee && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setHistoryModal({ isOpen: false, employee: null })}
               className="fixed inset-0 bg-ink/60 backdrop-blur-sm"
             />
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -2353,8 +2352,8 @@ const Employees: React.FC = () => {
                   </h3>
                   <p className="text-sm text-ink/40 mt-1">Tous les travaux, paiements, acomptes et absences</p>
                 </div>
-                <button 
-                  onClick={() => setHistoryModal({ isOpen: false, employee: null })} 
+                <button
+                  onClick={() => setHistoryModal({ isOpen: false, employee: null })}
                   className="p-2 rounded-xl hover:bg-primary-bg text-ink/20 hover:text-ink transition-all"
                 >
                   <X size={24} />
@@ -2363,14 +2362,14 @@ const Employees: React.FC = () => {
 
               <div className="overflow-y-auto custom-scrollbar flex-1">
                 <div className="p-5 md:p-8 space-y-8">
-                  
+
                   {/* Employee Info Summary */}
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div className="p-4 bg-primary-bg rounded-2xl border border-border/30">
                       <p className="text-xs font-bold uppercase tracking-widest text-ink/30 mb-2">Type de Paiement</p>
                       <p className="text-sm font-bold text-accent">
-                        {historyModal.employee.paymentType === 'percentage' ? `${historyModal.employee.percentage}%` : 
-                         historyModal.employee.paymentType === 'month' ? 'Mensuel' : 'Journalier'}
+                        {historyModal.employee.paymentType === 'percentage' ? `${historyModal.employee.percentage}%` :
+                          historyModal.employee.paymentType === 'month' ? 'Mensuel' : 'Journalier'}
                       </p>
                     </div>
                     <div className="p-4 bg-primary-bg rounded-2xl border border-border/30">
@@ -2455,17 +2454,17 @@ const Employees: React.FC = () => {
                                   <span className={cn(
                                     "inline-block text-xs font-bold px-3 py-1 rounded-lg mt-2",
                                     work.reservationWorkerStatus === 'paid' ? 'bg-green-50 text-green-600' :
-                                    work.reservationWorkerStatus === 'unpaid' ? 'bg-orange-50 text-orange-600' :
-                                    'bg-gray-50 text-gray-600'
+                                      work.reservationWorkerStatus === 'unpaid' ? 'bg-orange-50 text-orange-600' :
+                                        'bg-gray-50 text-gray-600'
                                   )}>
                                     {work.reservationWorkerStatus === 'paid' ? 'Payé' :
-                                     work.reservationWorkerStatus === 'unpaid' ? 'Non Payé' : 'Statut Inconnu'}
+                                      work.reservationWorkerStatus === 'unpaid' ? 'Non Payé' : 'Statut Inconnu'}
                                   </span>
                                 </div>
                               </div>
                               {historyModal.employee.paymentType === 'percentage' && (
                                 <div className="mt-3 pt-3 border-t border-border/30">
-                                 
+
                                 </div>
                               )}
                             </div>
@@ -2688,12 +2687,12 @@ const Employees: React.FC = () => {
                             <p className="text-xs text-ink/40 mb-1">Solde</p>
                             <p className={cn(
                               "font-bold",
-                              (historyData.works.filter(w => w.reservationWorkerStatus === 'unpaid').reduce((sum, w) => sum + (w.price || 0), 0) - 
-                               historyData.payments.filter(p => p.type === 'acompte').reduce((sum, p) => sum + p.amount, 0) +
-                               historyData.payments.filter(p => p.type === 'absence').reduce((sum, p) => sum + p.amount, 0)) >= 0 ? 'text-green-600' : 'text-red-600'
+                              (historyData.works.filter(w => w.reservationWorkerStatus === 'unpaid').reduce((sum, w) => sum + (w.price || 0), 0) -
+                                historyData.payments.filter(p => p.type === 'acompte').reduce((sum, p) => sum + p.amount, 0) +
+                                historyData.payments.filter(p => p.type === 'absence').reduce((sum, p) => sum + p.amount, 0)) >= 0 ? 'text-green-600' : 'text-red-600'
                             )}>
                               {formatCurrency(
-                                historyData.works.filter(w => w.reservationWorkerStatus === 'unpaid').reduce((sum, w) => sum + (w.price || 0), 0) - 
+                                historyData.works.filter(w => w.reservationWorkerStatus === 'unpaid').reduce((sum, w) => sum + (w.price || 0), 0) -
                                 historyData.payments.filter(p => p.type === 'acompte').reduce((sum, p) => sum + p.amount, 0) +
                                 historyData.payments.filter(p => p.type === 'absence').reduce((sum, p) => sum + p.amount, 0)
                               )}
@@ -2707,7 +2706,7 @@ const Employees: React.FC = () => {
               </div>
 
               <div className="sticky bottom-0 bg-white border-t border-border p-5 md:p-8 flex gap-4">
-                <button 
+                <button
                   onClick={() => setHistoryModal({ isOpen: false, employee: null })}
                   className="flex-1 py-3 rounded-xl bg-primary-bg text-ink/60 font-bold hover:bg-accent/10 transition-all"
                 >
@@ -2723,14 +2722,14 @@ const Employees: React.FC = () => {
       <AnimatePresence mode="wait">
         {selectedPaymentDetails.isOpen && selectedPaymentDetails.payment && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setSelectedPaymentDetails({ isOpen: false, payment: null, reservations: [] })}
               className="fixed inset-0 bg-ink/60 backdrop-blur-sm"
             />
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -2743,8 +2742,8 @@ const Employees: React.FC = () => {
                   </h3>
                   <p className="text-sm text-ink/40 mt-1">{selectedPaymentDetails.payment.description}</p>
                 </div>
-                <button 
-                  onClick={() => setSelectedPaymentDetails({ isOpen: false, payment: null, reservations: [] })} 
+                <button
+                  onClick={() => setSelectedPaymentDetails({ isOpen: false, payment: null, reservations: [] })}
                   className="p-2 rounded-xl hover:bg-primary-bg text-ink/20 hover:text-ink transition-all"
                 >
                   <X size={24} />
@@ -2753,7 +2752,7 @@ const Employees: React.FC = () => {
 
               <div className="overflow-y-auto custom-scrollbar flex-1">
                 <div className="p-5 md:p-8 space-y-6">
-                  
+
                   {/* Payment Summary */}
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                     <div className="p-4 bg-green-50 rounded-2xl border border-green-100">
@@ -2825,7 +2824,7 @@ const Employees: React.FC = () => {
               </div>
 
               <div className="sticky bottom-0 bg-white border-t border-border p-5 md:p-8 flex gap-4">
-                <button 
+                <button
                   onClick={() => setSelectedPaymentDetails({ isOpen: false, payment: null, reservations: [] })}
                   className="flex-1 py-3 rounded-xl bg-primary-bg text-ink/60 font-bold hover:bg-accent/10 transition-all"
                 >
